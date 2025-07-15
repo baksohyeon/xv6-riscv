@@ -35,3 +35,7 @@ And if you don't put an exit at the main program, something slightly weird will 
 `exit` does is it tells the kernel -> "I'm done" 
 It looks like a function call and it is, but eventually it becomes a trap instruction, which in xv6 is called int for inerrupt, which is confusing.
 
+### How to compile
+user.h -> add command
+makefile -> `UPROGS` -> add _{function_name} property
+
