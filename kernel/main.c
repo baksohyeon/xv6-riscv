@@ -16,6 +16,27 @@ main()
     printf("\n");
     printf("xv6 kernel is booting\n");
     printf("\n");
+    printf("    ██████╗  ██████╗ ██████╗ ██╗████████╗ ██████╗ \n");
+    printf("    ██╔══██╗██╔═══██╗██╔══██╗██║╚══██╔══╝██╔═══██╗\n");
+    printf("    ██║  ██║██║   ██║██████╔╝██║   ██║   ██║   ██║\n");
+    printf("    ██║  ██║██║   ██║██╔══██╗██║   ██║   ██║   ██║\n");
+    printf("    ██████╔╝╚██████╔╝██║  ██║██║   ██║   ╚██████╔╝\n");
+    printf("    ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝   ╚═╝    ╚═════╝ \n");
+    printf("\n");
+    printf("    ┌─────────────────────────────────────────────────┐\n");
+    printf("    │              OS STUDY PROJECT                   │\n");
+    printf("    │                                                 │\n");
+    printf("    │  [KERNEL]     [SCHEDULER]     [MEMORY MGR]      │\n");
+    printf("    │     │             │               │             │\n");
+    printf("    │     ├─THREADS     ├─FCFS          ├─PAGING      │\n");
+    printf("    │     ├─PROCESS     ├─SJF           ├─SEGMENTATION│\n");
+    printf("    │     └─SYNC        └─PRIORITY      └─VIRTUAL MEM │\n");
+    printf("    │                                                 │\n");
+    printf("    │  STATUS: [ LEARNING IN PROGRESS... ]            │\n");
+    printf("    └─────────────────────────────────────────────────┘\n");
+    printf("\n");
+    printf("\n");
+    printf("\n");
     kinit();         // physical page allocator
     kvminit();       // create kernel page table
     kvminithart();   // turn on paging
