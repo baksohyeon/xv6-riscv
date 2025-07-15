@@ -1,18 +1,16 @@
-typedef unsigned int uint;
-
 struct stat;
 
 // system calls
-int fork(void);
-int exit(int) __attribute__((noreturn));
-int wait(int*);
-int pipe(int*);
-int write(int, const void*, int);
-int read(int, void*, int);
-int close(int);
-int kill(int);
-int exec(const char*, char**);
-int open(const char*, int);
+int fork(void); // Creates a new process
+int exit(int) __attribute__((noreturn)); // Terminates the current process
+int wait(int*); // Waits for a process to complete executing
+int pipe(int*); // Creates a pipe for inter-process communication
+int write(int, const void*, int); // Writes data to a file descriptor
+int read(int, void*, int); // Reads data from a file descriptor
+int close(int); // Closes a file descriptor
+int kill(int); // kill a process by its PID
+int exec(const char*, char**); // Executes a new program in the current process
+int open(const char*, int); // Opens a file or device
 int mknod(const char*, short, short);
 int unlink(const char*);
 int fstat(int fd, struct stat*);
