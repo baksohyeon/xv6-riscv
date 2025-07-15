@@ -1,0 +1,37 @@
+# NOTE
+
+
+## What is a System Call in an Operating System?
+
+A system call is a mechanism that allows a user-space program to request a service from the operating system's kernel. It acts as an interface between the application and the operating system, enabling programs to interact with hardware or perform privileged operations that are restricted to the kernel.
+
+## Key Characteristics of System Calls:
+1. **Kernel Mode Execution**: System calls transition the CPU from user mode to kernel mode, allowing the program to execute privileged instructions.
+2. **Predefined Interface**: Operating systems provide a set of predefined system calls for common operations like file manipulation, process control, and inter-process communication.
+3. **Hardware Abstraction**: System calls abstract hardware details, providing a consistent interface for applications.
+
+## Common Categories of System Calls:
+1. **Process Control**: `fork()`, `exec()`, `exit()`
+2. **File Management**: `open()`, `read()`, `write()`, `close()`
+3. **Device Management**: `ioctl()`, `read()`, `write()`
+4. **Information Maintenance**: `getpid()`, `alarm()`, `sleep()`
+5. **Communication**: `pipe()`, `shmget()`, `mmap()`
+
+## Example Workflow:
+1. A user-space program invokes a system call (e.g., `read()`).
+2. The system call triggers a software interrupt or trap, switching the CPU to kernel mode.
+3. The kernel performs the requested operation (e.g., reading data from a file).
+4. The kernel returns the result to the user-space program and switches back to user mode.
+
+System calls are a fundamental concept in operating systems, enabling secure and controlled interaction between user applications and the system's hardware resources.
+
+---
+
+## ls.c
+All the xv6 programs don't just return, They actually return call exit()
+And if you don't put an exit at the main program, something slightly weird will happen. (talk about later on in the semester)
+
+### exit()
+`exit` does is it tells the kernel -> "I'm done" 
+It looks like a function call and it is, but eventually it becomes a trap instruction, which in xv6 is called int for inerrupt, which is confusing.
+
