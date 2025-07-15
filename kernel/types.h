@@ -1,3 +1,6 @@
+// kernel/types.h
+
+// Removed duplicate typedef
 typedef unsigned int uint;
 typedef unsigned int   uint;
 typedef unsigned short ushort;
