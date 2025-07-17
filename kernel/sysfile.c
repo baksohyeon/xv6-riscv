@@ -86,9 +86,7 @@ sys_read(void)
 uint64
 sys_getreadcount(void)
 {
-  int count;
-  count = readcount;
-  return count;
+  return readcount;
 }
 
 
