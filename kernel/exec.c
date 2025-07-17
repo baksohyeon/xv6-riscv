@@ -22,16 +22,16 @@ int flags2perm(int flags)
 int
 exec(char *path, char **argv)
 {
-  char *s, *last;
-  int i, off;
-  uint64 argc, sz = 0, sp, ustack[MAXARG], stackbase;
-  struct elfhdr elf;
-  struct inode *ip;
-  struct proghdr ph;
-  pagetable_t pagetable = 0, oldpagetable;
-  struct proc *p = myproc();
+  char *s, *last; // used to find the last component of path
+  int i, off; // used to iterate through the ELF program headers
+  uint64 argc, sz = 0, sp, ustack[MAXARG], stackbase; // used for the user stack
+  struct elfhdr elf; // ELF header
+  struct inode *ip; // inode for the executable file
+  struct proghdr ph; // program header for the ELF file
+  pagetable_t pagetable = 0, oldpagetable; // page table for the process
+  struct proc *p = myproc(); // current process
 
-  begin_op();
+  begin_op(); // start a file operation
 
   if((ip = namei(path)) == 0){
     end_op();
@@ -139,6 +139,7 @@ exec(char *path, char **argv)
   }
   return -1;
 }
+
 
 // Load a program segment into pagetable at virtual address va.
 // va must be page-aligned
