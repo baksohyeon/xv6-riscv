@@ -79,14 +79,20 @@ sys_read(void)
   argint(2, &n);
   if(argfd(0, 0, &f) < 0)
     return -1;
+  acquire(&readcountlock);
   readcount++;
+  release(&readcountlock);
   return fileread(f, p, n);
 }
 
 uint64
 sys_getreadcount(void)
 {
-  return readcount;
+  int count;
+  acquire(&readcountlock);
+  count = readcount;
+  release(&readcountlock);
+  return count;
 }
 
 
