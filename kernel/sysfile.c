@@ -17,6 +17,13 @@
 #include "fcntl.h"
 
 int readcount = 0;
+struct spinlock readcountlock;
+
+void
+readcountinit(void)
+{
+  initlock(&readcountlock, "readcount");
+}
 
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
@@ -78,14 +85,20 @@ sys_read(void)
   argint(2, &n);
   if(argfd(0, 0, &f) < 0)
     return -1;
+  acquire(&readcountlock);
   readcount++;
+  release(&readcountlock);
   return fileread(f, p, n);
 }
 
 uint64
 sys_getreadcount(void)
 {
-  return readcount;
+  int count;
+  acquire(&readcountlock);
+  count = readcount;
+  release(&readcountlock);
+  return count;
 }
 
 
