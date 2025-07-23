@@ -120,6 +120,9 @@ exec(char *path, char **argv)
       last = s+1;
   safestrcpy(p->name, last, sizeof(p->name));
     
+  // Reset tickets to default value for lottery scheduling
+  p->tickets = DEFAULT_TICKETS;
+
   // Commit to the user image.
   oldpagetable = p->pagetable;
   p->pagetable = pagetable;
