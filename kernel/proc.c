@@ -562,7 +562,7 @@ scheduler(void)
     
     if(total_tickets > 0) {
       // Pure lottery scheduling
-      uint winner = random() % total_tickets;
+      uint winner = ((uint64)random() * total_tickets) >> 32;
       uint counter = 0;
       
       for(p = proc; p < &proc[NPROC]; p++) {
