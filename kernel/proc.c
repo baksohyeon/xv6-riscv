@@ -499,37 +499,6 @@ calculate_total_tickets(void)
   return total;
 }
 
-// Update pass value for a process
-static void
-update_pass(struct proc *p)
-{
-  if(p->tickets > 0) {
-    p->pass_value += (1000000 / p->tickets);  // Scale factor to avoid floating point
-  }
-}
-
-// Find process with minimum pass value
-static struct proc*
-get_min_pass_proc_locked(void)
-{
-  struct proc *p;
-  struct proc *min_proc = 0;
-  uint min_pass = ~0;  // Maximum uint value
-  
-  for(p = proc; p < &proc[NPROC]; p++) {
-    acquire(&p->lock);
-    if(p->state == RUNNABLE && p->pass_value < min_pass) {
-      min_pass = p->pass_value;
-      if(min_proc) {
-        release(&min_proc->lock);
-      }
-      min_proc = p;
-    } else {
-      release(&p->lock);
-    }
-  }
-  return min_proc;  // Caller must release lock if non-zero
-}
 
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -555,46 +524,25 @@ scheduler(void)
     uint total_tickets = calculate_total_tickets();
     
     if(total_tickets > 0) {
-      // 1. stride scheduling
-      p = get_min_pass_proc_locked();
-      if(p) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        update_pass(p);
-        swtch(&c->context, &p->context);
-        
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-        release(&p->lock);
-        found = 1;
-      }
+      // Pure lottery scheduling
+      uint winner = ((uint64)random() * total_tickets) >> 32;
+      uint counter = 0;
       
-      // Fallback to lottery scheduling if stride fails
-      if(!found) {
-        // execute the winner process
-        uint winner = random() % total_tickets;
-        uint counter = 0;
-        
-        for(p = proc; p < &proc[NPROC]; p++) {
-          acquire(&p->lock);
-          if(p->state == RUNNABLE) {
-            counter += p->tickets;
-            if(counter > winner) {
-              p->state = RUNNING;
-              c->proc = p;
-              swtch(&c->context, &p->context);
-              c->proc = 0;
-              found = 1;
-              release(&p->lock);
-              break;
-            }
+      for(p = proc; p < &proc[NPROC]; p++) {
+        acquire(&p->lock);
+        if(p->state == RUNNABLE) {
+          counter += p->tickets;
+          if(counter > winner) {
+            p->state = RUNNING;
+            c->proc = p;
+            swtch(&c->context, &p->context);
+            c->proc = 0;
+            found = 1;
+            release(&p->lock);
+            break;
           }
-          release(&p->lock);
         }
+        release(&p->lock);
       }
     }
 
