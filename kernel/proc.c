@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "pstats.h"
 
 struct cpu cpus[NCPU];
 
@@ -126,7 +127,7 @@ found:
   p->state = USED;
   // Initialize lottery scheduling parameters
   p->tickets = DEFAULT_TICKETS;
-  p->pass_value = 0;
+  p->ticks = 0;
 
 
   // Allocate a trapframe page.
@@ -289,8 +290,48 @@ settickets(int number)
   // acquire lock to ensure atomic operation
   acquire(&p->lock);
   p->tickets = number;
-  p->pass_value = 0;
   release(&p->lock);
+  return 0;
+}
+
+// Get process information for all processes
+int
+getpinfo(uint64 addr)
+{
+  struct pstat pstat;
+  struct proc *p;
+  int i;
+  
+  // Clear the pstat structure
+  for(i = 0; i < NPROC; i++) {
+    pstat.inuse[i] = 0;
+    pstat.tickets[i] = 0;
+    pstat.pid[i] = 0;
+    pstat.ticks[i] = 0;
+  }
+  
+  // Fill in the pstat structure
+  i = 0;
+  for(p = proc; p < &proc[NPROC] && i < NPROC; p++, i++) {
+    acquire(&p->lock);
+    if(p->state != UNUSED) {
+      pstat.inuse[i] = 1;
+      pstat.tickets[i] = p->tickets;
+      pstat.pid[i] = p->pid;
+      pstat.ticks[i] = p->ticks;
+    } else {
+      pstat.inuse[i] = 0;
+      pstat.tickets[i] = 0;
+      pstat.pid[i] = 0;
+      pstat.ticks[i] = 0;
+    }
+    release(&p->lock);
+  }
+  
+  // Copy to user space
+  if(copyout(myproc()->pagetable, addr, (char *)&pstat, sizeof(pstat)) < 0)
+    return -1;
+    
   return 0;
 }
 
@@ -332,9 +373,9 @@ fork(void)
 
   pid = np->pid;
 
-  // Inherit parent's tickets and pass value for lottery scheduling
+  // Inherit parent's tickets for lottery scheduling
   np->tickets = p->tickets;
-  np->pass_value = p->pass_value;
+  np->ticks = 0;  // Child starts with 0 ticks
 
   release(&np->lock);
 
@@ -400,9 +441,9 @@ exit(int status)
   acquire(&p->lock);
 
   p->xstate = status;
-  // Reclaim tickets and reset pass value before becoming a zombie
+  // Reset lottery scheduling fields before becoming a zombie
   p->tickets = 0;
-  p->pass_value = 0;
+  p->ticks = 0;
   p->state = ZOMBIE;
 
   release(&wait_lock);
@@ -467,16 +508,8 @@ uint
 random(void) 
 {
   static uint seed = 1;
-  uint time_val = r_time();           // Current time
-  uint cpu_id = (uint)r_tp();         // CPU ID
-  uint stack_ptr = (uint)r_sp();      // Stack pointer value
-  uint timer_ticks = ticks;           // System ticks
   
-  // Mix entropy sources into the seed
-  seed ^= time_val;
-  seed += (timer_ticks << 8) | cpu_id;
-  seed ^= (stack_ptr >> 3);           
-  
+  // Linear congruential generator
   seed = seed * 1664525 + 1013904223;
   
   return seed;
@@ -499,37 +532,6 @@ calculate_total_tickets(void)
   return total;
 }
 
-// Update pass value for a process
-static void
-update_pass(struct proc *p)
-{
-  if(p->tickets > 0) {
-    p->pass_value += (1000000 / p->tickets);  // Scale factor to avoid floating point
-  }
-}
-
-// Find process with minimum pass value
-static struct proc*
-get_min_pass_proc_locked(void)
-{
-  struct proc *p;
-  struct proc *min_proc = 0;
-  uint min_pass = ~0;  // Maximum uint value
-  
-  for(p = proc; p < &proc[NPROC]; p++) {
-    acquire(&p->lock);
-    if(p->state == RUNNABLE && p->pass_value < min_pass) {
-      min_pass = p->pass_value;
-      if(min_proc) {
-        release(&min_proc->lock);
-      }
-      min_proc = p;
-    } else {
-      release(&p->lock);
-    }
-  }
-  return min_proc;  // Caller must release lock if non-zero
-}
 
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -555,46 +557,26 @@ scheduler(void)
     uint total_tickets = calculate_total_tickets();
     
     if(total_tickets > 0) {
-      // 1. stride scheduling
-      p = get_min_pass_proc_locked();
-      if(p) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        update_pass(p);
-        swtch(&c->context, &p->context);
-        
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-        release(&p->lock);
-        found = 1;
-      }
+      // Pure lottery scheduling
+      uint winner = ((uint64)random() * total_tickets) >> 32;
+      uint counter = 0;
       
-      // Fallback to lottery scheduling if stride fails
-      if(!found) {
-        // execute the winner process
-        uint winner = random() % total_tickets;
-        uint counter = 0;
-        
-        for(p = proc; p < &proc[NPROC]; p++) {
-          acquire(&p->lock);
-          if(p->state == RUNNABLE) {
-            counter += p->tickets;
-            if(counter > winner) {
-              p->state = RUNNING;
-              c->proc = p;
-              swtch(&c->context, &p->context);
-              c->proc = 0;
-              found = 1;
-              release(&p->lock);
-              break;
-            }
+      for(p = proc; p < &proc[NPROC]; p++) {
+        acquire(&p->lock);
+        if(p->state == RUNNABLE) {
+          if(counter <= winner && winner < counter + p->tickets) {
+            p->state = RUNNING;
+            c->proc = p;
+            p->ticks++;  // Increment ticks when process is chosen
+            swtch(&c->context, &p->context);
+            c->proc = 0;
+            found = 1;
+            release(&p->lock);
+            break;
           }
-          release(&p->lock);
+          counter += p->tickets;
         }
+        release(&p->lock);
       }
     }
 
