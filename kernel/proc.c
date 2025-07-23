@@ -128,7 +128,6 @@ found:
   // Initialize lottery scheduling parameters
   p->tickets = DEFAULT_TICKETS;
   p->ticks = 0;
-  p->pass_value = 0;
 
 
   // Allocate a trapframe page.
@@ -291,7 +290,6 @@ settickets(int number)
   // acquire lock to ensure atomic operation
   acquire(&p->lock);
   p->tickets = number;
-  p->pass_value = 0;
   release(&p->lock);
   return 0;
 }
@@ -378,7 +376,6 @@ fork(void)
   // Inherit parent's tickets for lottery scheduling
   np->tickets = p->tickets;
   np->ticks = 0;  // Child starts with 0 ticks
-  np->pass_value = p->pass_value;
 
   release(&np->lock);
 
@@ -447,7 +444,6 @@ exit(int status)
   // Reset lottery scheduling fields before becoming a zombie
   p->tickets = 0;
   p->ticks = 0;
-  p->pass_value = 0;
   p->state = ZOMBIE;
 
   release(&wait_lock);
