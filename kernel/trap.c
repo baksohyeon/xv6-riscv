@@ -6,6 +6,8 @@
 #include "proc.h"
 #include "defs.h"
 
+// ticks는 xv6에서 시간의 흐름을 나타내는 변수로,
+// 타이머 인터럽트가 발생할 때마다 증가한다.
 struct spinlock tickslock;
 uint ticks;
 
@@ -162,7 +164,13 @@ kerneltrap()
   w_sstatus(sstatus);
 }
 
+// 각 프로세스는 동일한 시간 슬라이스를 받는다.
+// 이 함수는 xv6의 시간 관리에 중요한 역할을 한다.
+// 타이머 인터럽트가 발생하면 이 함수가 호출된다.
+// CPU 0에서만 실행되며, ticks를 증가시키고
+// ticks를 기다리는 프로세스들을 깨운다.
 void
+
 clockintr()
 {
   if(cpuid() == 0){
@@ -175,7 +183,7 @@ clockintr()
   // ask for the next timer interrupt. this also clears
   // the interrupt request. 1000000 is about a tenth
   // of a second.
-  w_stimecmp(r_time() + 1000000);
+  w_stimecmp(r_time() + 1000000); // 다음 타이머 인터럽트 설정
 }
 
 // check if it's an external interrupt or software interrupt,
