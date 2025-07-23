@@ -17,6 +17,7 @@ struct spinlock pid_lock;
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
+static void lottery_init(struct proc *p);  // Add function declaration
 
 extern char trampoline[]; // trampoline.S
 
@@ -627,15 +628,19 @@ sched(void)
   struct proc *p = myproc(); // 현재 프로세스
 
   // Check that this process has a lock, and is not running. 
-  if(!holding(&p->lock))
+  if(!holding(&p->lock)) {
     panic("sched p->lock");
-    if(mycpu()->noff != 1)
+  }
+  if(mycpu()->noff != 1) {
     panic("sched locks");
-    // If the process were running, it would not have called sched().
-    if(p->state == RUNNING)
+  }
+  // If the process were running, it would not have called sched().
+  if(p->state == RUNNING) {
     panic("sched running");
-  if(intr_get())
+  }
+  if(intr_get()) {
     panic("sched interruptible");
+  }
 
   // Switch to scheduler.
   // The process must release its lock before
