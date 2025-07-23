@@ -457,6 +457,7 @@ scheduler(void)
     int found = 0;
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
+      // RUNNABLE 프로세스를 찾으면 실행 
       if(p->state == RUNNABLE) {
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
@@ -467,6 +468,7 @@ scheduler(void)
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
+        // 프로세스가 CPU 를 양보하면 다시 스케줄러로
         c->proc = 0;
         found = 1;
       }
