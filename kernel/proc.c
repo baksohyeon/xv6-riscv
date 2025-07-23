@@ -505,7 +505,7 @@ sched(void)
     panic("sched interruptible");
 
   intena = mycpu()->intena;
-  swtch(&p->context, &mycpu()->context);
+  swtch(&p->context, &mycpu()->context); // swtch.S assembly code
   mycpu()->intena = intena;
 }
 
