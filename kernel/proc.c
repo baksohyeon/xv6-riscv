@@ -125,6 +125,9 @@ found:
   p->pid = allocpid();
   p->state = USED;
 
+  // Initialize tickets for lottery scheduling
+  p->tickets = DEFAULT_TICKETS;
+
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -434,10 +437,32 @@ wait(uint64 addr)
   }
 }
 
+
+
+uint 
+random(void) 
+{
+  static uint seed = 1;
+  uint time_val = r_time();           // Current time
+  uint cpu_id = (uint)r_tp();         // CPU ID
+  uint stack_ptr = (uint)r_sp();      // Stack pointer value
+  uint timer_ticks = ticks;           // System ticks
+  
+  // Mix entropy sources into the seed
+  seed ^= time_val;
+  seed += (timer_ticks << 8) | cpu_id;
+  seed ^= (stack_ptr >> 3);           
+  
+  seed = seed * 1664525 + 1013904223;
+  
+  return seed;
+}
+
+
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
-//  - choose a process to run.
+//  - choose a process to run based on lottery scheduling.
 //  - swtch to start running that process.
 //  - eventually that process transfers control
 //    via swtch back to the scheduler.
@@ -446,36 +471,55 @@ scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
-
+  
   c->proc = 0;
   for(;;){
-    // The most recent process to run may have had interrupts
-    // turned off; enable them to avoid a deadlock if all
-    // processes are waiting.
+    // Enable interrupts on this processor.
     intr_on();
 
     int found = 0;
+    int total_tickets = 0;
+    
+    // 1. Count total tickets of RUNNABLE processes
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
-      // RUNNABLE 프로세스를 찾으면 실행 
       if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        // 프로세스가 CPU 를 양보하면 다시 스케줄러로
-        c->proc = 0;
-        found = 1;
+        total_tickets += p->tickets;
       }
       release(&p->lock);
     }
+
+    // If there are runnable processes
+    if(total_tickets > 0) {
+      // Choose winning ticket
+      uint winner = random() % total_tickets;
+      
+      // 2. Find the winning process
+      int counter = 0;
+      for(p = proc; p < &proc[NPROC]; p++) {
+        acquire(&p->lock);
+        if(p->state == RUNNABLE) {
+          counter += p->tickets;
+          if(counter > winner) {
+            // This is our winner - run it
+            p->state = RUNNING;
+            c->proc = p;
+            swtch(&c->context, &p->context);
+            
+            // Process is done running for now.
+            // It should have changed its p->state before coming back.
+            c->proc = 0;
+            found = 1;
+            release(&p->lock);
+            break;
+          }
+        }
+        release(&p->lock);
+      }
+    }
+
     if(found == 0) {
-      // nothing to run; stop running on this core until an interrupt.
+      // Still nothing runnable, so wait for interrupts
       intr_on();
       asm volatile("wfi");
     }

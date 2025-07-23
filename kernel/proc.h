@@ -93,6 +93,9 @@ struct trapframe {
 // The process is no longer in the process table and cannot be scheduled to run again.
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+#define DEFAULT_TICKETS 100 // Default number of tickets for a process in the lottery scheduler.
+
+
 // Per-process state
 struct proc {
   struct spinlock lock;
@@ -103,6 +106,7 @@ struct proc {
   int killed;                  // If non-zero, have been killed
   int xstate;                  // Exit status to be returned to parent's wait, 
   int pid;                     // Process ID
+  _Atomic int tickets;         // Number of tickets for lottery scheduling
 
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
