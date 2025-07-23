@@ -104,9 +104,10 @@ struct proc {
   enum procstate state;        // Process state
   void *chan;                  // If non-zero, sleeping on chan
   int killed;                  // If non-zero, have been killed
-  int xstate;                  // Exit status to be returned to parent's wait, 
+  int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
-  _Atomic int tickets;         // Number of tickets for lottery scheduling
+  _Atomic uint tickets;         // Number of tickets for lottery scheduling
+  _Atomic uint pass_value;     // Pass value for stride scheduling variant
 
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
