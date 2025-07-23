@@ -122,6 +122,7 @@ exec(char *path, char **argv)
     
   // Reset tickets to default value for lottery scheduling
   p->tickets = DEFAULT_TICKETS;
+  p->pass_value = 0; 
 
   // Commit to the user image.
   oldpagetable = p->pagetable;
