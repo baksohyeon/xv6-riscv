@@ -79,6 +79,18 @@ struct trapframe {
   /* 280 */ uint64 t6;
 };
 
+// Process states
+// These are the states a process can be in.
+// UNUSED: The process is not allocated.
+// USED: The process is allocated but not running.
+// SLEEPING: The process is waiting for an event to occur.
+// RUNNABLE: The process is ready to run.
+// RUNNING: The process is currently running.
+// ZOMBIE: The process has exited but its parent has not yet waited for it.
+// The process is in a zombie state until its parent calls wait() to collect its exit status
+// and free its resources.
+// After the parent calls wait(), the process is removed from the process table and its resources are freed.
+// The process is no longer in the process table and cannot be scheduled to run again.
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 // Per-process state
@@ -89,7 +101,7 @@ struct proc {
   enum procstate state;        // Process state
   void *chan;                  // If non-zero, sleeping on chan
   int killed;                  // If non-zero, have been killed
-  int xstate;                  // Exit status to be returned to parent's wait
+  int xstate;                  // Exit status to be returned to parent's wait, 
   int pid;                     // Process ID
 
   // wait_lock must be held when using this:
@@ -100,7 +112,7 @@ struct proc {
   uint64 sz;                   // Size of process memory (bytes)
   pagetable_t pagetable;       // User page table
   struct trapframe *trapframe; // data page for trampoline.S
-  struct context context;      // swtch() here to run process
+  struct context context;      // swtch() here to run process, contains saved registers
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
