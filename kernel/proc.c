@@ -125,8 +125,8 @@ found:
   p->pid = allocpid();
   p->state = USED;
 
-  // Initialize tickets for lottery scheduling
-  p->tickets = DEFAULT_TICKETS;
+  // Initialize lottery scheduling values
+  lottery_init(p);
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -277,7 +277,7 @@ growproc(int n)
   return 0;
 }
 
-// Set the number of tickets for the current process
+// Set tickets for the current process
 int
 settickets(int number)
 {
@@ -285,8 +285,11 @@ settickets(int number)
     return -1;
     
   struct proc *p = myproc();
-  p->tickets = number;  // Atomic operation
-  // 여러 필드를 원자적으로 변경해야하는 경우는 spin lock 필요하긴 함
+  // acquire lock to ensure atomic operation
+  acquire(&p->lock);
+  p->tickets = number;
+  p->pass_value = 0;
+  release(&p->lock);
   return 0;
 }
 
@@ -328,8 +331,9 @@ fork(void)
 
   pid = np->pid;
 
-  // Inherit parent's tickets for lottery scheduling
+  // Inherit parent's tickets and pass value for lottery scheduling
   np->tickets = p->tickets;
+  np->pass_value = p->pass_value;
 
   release(&np->lock);
 
@@ -366,7 +370,7 @@ void
 exit(int status)
 {
   struct proc *p = myproc();
-
+  
   if(p == initproc)
     panic("init exiting");
 
@@ -395,8 +399,9 @@ exit(int status)
   acquire(&p->lock);
 
   p->xstate = status;
-  // Reclaim tickets before becoming a zombie
-  p->tickets = 0;  // Atomic operation
+  // Reclaim tickets and reset pass value before becoming a zombie
+  p->tickets = 0;
+  p->pass_value = 0;
   p->state = ZOMBIE;
 
   release(&wait_lock);
@@ -476,14 +481,64 @@ random(void)
   return seed;
 }
 
+// Calculate total tickets of all RUNNABLE processes
+static uint
+calculate_total_tickets(void)
+{
+  struct proc *p;
+  uint total = 0;
+  
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->state == RUNNABLE) {
+      total += p->tickets;
+    }
+    release(&p->lock);
+  }
+  return total;
+}
 
-// Per-CPU process scheduler.
-// Each CPU calls scheduler() after setting itself up.
-// Scheduler never returns.  It loops, doing:
-//  - choose a process to run based on lottery scheduling.
-//  - swtch to start running that process.
-//  - eventually that process transfers control
-//    via swtch back to the scheduler.
+// Update pass value for a process
+static void
+update_pass(struct proc *p)
+{
+  if(p->tickets > 0) {
+    p->pass_value += (1000000 / p->tickets);  // Scale factor to avoid floating point
+  }
+}
+
+// Find process with minimum pass value
+static struct proc*
+get_min_pass_proc(void)
+{
+  struct proc *p;
+  struct proc *min_proc = 0;
+  uint min_pass = ~0;  // Maximum uint value
+  
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->state == RUNNABLE && p->pass_value < min_pass) {
+      min_pass = p->pass_value;
+      if(min_proc) {
+        release(&min_proc->lock);
+      }
+      min_proc = p;
+    } else {
+      release(&p->lock);
+    }
+  }
+  return min_proc;  // Caller must release lock if non-zero
+}
+
+// Initialize process tickets and pass value
+static void
+lottery_init(struct proc *p)
+{
+  p->tickets = DEFAULT_TICKETS;
+  p->pass_value = 0;
+}
+
+// Per-CPU process scheduler
 void
 scheduler(void)
 {
@@ -496,43 +551,46 @@ scheduler(void)
     intr_on();
 
     int found = 0;
-    int total_tickets = 0;
+    uint total_tickets = calculate_total_tickets();
     
-    // 1. Count total tickets of RUNNABLE processes
-    for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        total_tickets += p->tickets;
-      }
-      release(&p->lock);
-    }
-
-    // If there are runnable processes
     if(total_tickets > 0) {
-      // Choose winning ticket
-      uint winner = random() % total_tickets;
-      
-      // 2. Find the winning process
-      int counter = 0;
-      for(p = proc; p < &proc[NPROC]; p++) {
-        acquire(&p->lock);
-        if(p->state == RUNNABLE) {
-          counter += p->tickets;
-          if(counter > winner) {
-            // This is our winner - run it
-            p->state = RUNNING;
-            c->proc = p;
-            swtch(&c->context, &p->context);
-            
-            // Process is done running for now.
-            // It should have changed its p->state before coming back.
-            c->proc = 0;
-            found = 1;
-            release(&p->lock);
-            break;
-          }
-        }
+      // 1. strid scheduling
+      p = get_min_pass_proc();
+      if(p) {
+        // Run this process
+        p->state = RUNNING;
+        c->proc = p;
+        update_pass(p);
+        swtch(&c->context, &p->context);
+        
+        // Process is done running for now.
+        c->proc = 0;
         release(&p->lock);
+        found = 1;
+      }
+      
+      // Fallback to lottery scheduling if stride fails
+      if(!found) {
+        // execute the winner process
+        uint winner = random() % total_tickets;
+        uint counter = 0;
+        
+        for(p = proc; p < &proc[NPROC]; p++) {
+          acquire(&p->lock);
+          if(p->state == RUNNABLE) {
+            counter += p->tickets;
+            if(counter > winner) {
+              p->state = RUNNING;
+              c->proc = p;
+              swtch(&c->context, &p->context);
+              c->proc = 0;
+              found = 1;
+              release(&p->lock);
+              break;
+            }
+          }
+          release(&p->lock);
+        }
       }
     }
 
