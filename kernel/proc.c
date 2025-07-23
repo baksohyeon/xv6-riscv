@@ -538,7 +538,13 @@ lottery_init(struct proc *p)
   p->pass_value = 0;
 }
 
-// Per-CPU process scheduler
+// Per-CPU process scheduler.
+// Each CPU calls scheduler() after setting itself up.
+// Scheduler never returns.  It loops, doing:
+//  - choose a process to run.
+//  - swtch to start running that process.
+//  - eventually that process transfers control
+//    via swtch back to the scheduler.
 void
 scheduler(void)
 {
@@ -547,23 +553,28 @@ scheduler(void)
   
   c->proc = 0;
   for(;;){
-    // Enable interrupts on this processor.
+    // The most recent process to run may have had interrupts
+    // turned off; enable them to avoid a deadlock if all
+    // processes are waiting.
     intr_on();
 
     int found = 0;
     uint total_tickets = calculate_total_tickets();
     
     if(total_tickets > 0) {
-      // 1. strid scheduling
+      // 1. stride scheduling
       p = get_min_pass_proc();
       if(p) {
-        // Run this process
+        // Switch to chosen process.  It is the process's job
+        // to release its lock and then reacquire it
+        // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
         update_pass(p);
         swtch(&c->context, &p->context);
         
         // Process is done running for now.
+        // It should have changed its p->state before coming back.
         c->proc = 0;
         release(&p->lock);
         found = 1;
