@@ -5,7 +5,7 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
-#include "pstat.h"
+#include "pstats.h"
 
 uint64
 sys_exit(void)

@@ -140,6 +140,7 @@ UPROGS=\
 	$U/_usertests\
 	$U/_grind\
 	$U/_wc\
+	$U/_testlottery\
 	$U/_zombie\
 	$U/_hello\
 	$U/_testread\

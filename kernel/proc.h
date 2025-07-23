@@ -93,7 +93,7 @@ struct trapframe {
 // The process is no longer in the process table and cannot be scheduled to run again.
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
-#define DEFAULT_TICKETS 100 // Default number of tickets for a process in the lottery scheduler.
+#define DEFAULT_TICKETS 1 // Default number of tickets for a process in the lottery scheduler.
 
 
 // Per-process state

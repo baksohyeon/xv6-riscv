@@ -5,7 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
-#include "pstat.h"
+#include "pstats.h"
 
 struct cpu cpus[NCPU];
 
@@ -512,16 +512,8 @@ uint
 random(void) 
 {
   static uint seed = 1;
-  uint time_val = r_time();           // Current time
-  uint cpu_id = (uint)r_tp();         // CPU ID
-  uint stack_ptr = (uint)r_sp();      // Stack pointer value
-  uint timer_ticks = ticks;           // System ticks
   
-  // Mix entropy sources into the seed
-  seed ^= time_val;
-  seed += (timer_ticks << 8) | cpu_id;
-  seed ^= (stack_ptr >> 3);           
-  
+  // Linear congruential generator
   seed = seed * 1664525 + 1013904223;
   
   return seed;
@@ -570,14 +562,13 @@ scheduler(void)
     
     if(total_tickets > 0) {
       // Pure lottery scheduling
-      uint winner = ((uint64)random() * total_tickets) >> 32;
+      uint winner = random() % total_tickets;
       uint counter = 0;
       
       for(p = proc; p < &proc[NPROC]; p++) {
         acquire(&p->lock);
         if(p->state == RUNNABLE) {
-          counter += p->tickets;
-          if(counter > winner) {
+          if(counter <= winner && winner < counter + p->tickets) {
             p->state = RUNNING;
             c->proc = p;
             p->ticks++;  // Increment ticks when process is chosen
@@ -587,6 +578,7 @@ scheduler(void)
             release(&p->lock);
             break;
           }
+          counter += p->tickets;
         }
         release(&p->lock);
       }
