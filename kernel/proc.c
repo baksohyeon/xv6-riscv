@@ -510,7 +510,7 @@ update_pass(struct proc *p)
 
 // Find process with minimum pass value
 static struct proc*
-get_min_pass_proc(void)
+get_min_pass_proc_locked(void)
 {
   struct proc *p;
   struct proc *min_proc = 0;
@@ -556,7 +556,7 @@ scheduler(void)
     
     if(total_tickets > 0) {
       // 1. stride scheduling
-      p = get_min_pass_proc();
+      p = get_min_pass_proc_locked();
       if(p) {
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
