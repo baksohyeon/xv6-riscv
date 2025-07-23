@@ -108,6 +108,7 @@ struct proc {
   int pid;                     // Process ID
   _Atomic uint tickets;         // Number of tickets for lottery scheduling
   _Atomic uint pass_value;     // Pass value for stride scheduling variant
+  _Atomic uint ticks;          // Number of times this process has been chosen
 
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process

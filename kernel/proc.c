@@ -126,6 +126,7 @@ found:
   p->state = USED;
   // Initialize lottery scheduling parameters
   p->tickets = DEFAULT_TICKETS;
+  p->ticks = 0;
   p->pass_value = 0;
 
 
@@ -294,6 +295,47 @@ settickets(int number)
   return 0;
 }
 
+// Get process information for all processes
+int
+getpinfo(uint64 addr)
+{
+  struct pstat pstat;
+  struct proc *p;
+  int i;
+  
+  // Clear the pstat structure
+  for(i = 0; i < NPROC; i++) {
+    pstat.inuse[i] = 0;
+    pstat.tickets[i] = 0;
+    pstat.pid[i] = 0;
+    pstat.ticks[i] = 0;
+  }
+  
+  // Fill in the pstat structure
+  i = 0;
+  for(p = proc; p < &proc[NPROC] && i < NPROC; p++, i++) {
+    acquire(&p->lock);
+    if(p->state != UNUSED) {
+      pstat.inuse[i] = 1;
+      pstat.tickets[i] = p->tickets;
+      pstat.pid[i] = p->pid;
+      pstat.ticks[i] = p->ticks;
+    } else {
+      pstat.inuse[i] = 0;
+      pstat.tickets[i] = 0;
+      pstat.pid[i] = 0;
+      pstat.ticks[i] = 0;
+    }
+    release(&p->lock);
+  }
+  
+  // Copy to user space
+  if(copyout(myproc()->pagetable, addr, (char *)&pstat, sizeof(pstat)) < 0)
+    return -1;
+    
+  return 0;
+}
+
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
 int
@@ -332,8 +374,9 @@ fork(void)
 
   pid = np->pid;
 
-  // Inherit parent's tickets and pass value for lottery scheduling
+  // Inherit parent's tickets for lottery scheduling
   np->tickets = p->tickets;
+  np->ticks = 0;  // Child starts with 0 ticks
   np->pass_value = p->pass_value;
 
   release(&np->lock);
@@ -400,8 +443,9 @@ exit(int status)
   acquire(&p->lock);
 
   p->xstate = status;
-  // Reclaim tickets and reset pass value before becoming a zombie
+  // Reset lottery scheduling fields before becoming a zombie
   p->tickets = 0;
+  p->ticks = 0;
   p->pass_value = 0;
   p->state = ZOMBIE;
 
@@ -535,6 +579,7 @@ scheduler(void)
           if(counter > winner) {
             p->state = RUNNING;
             c->proc = p;
+            p->ticks++;  // Increment ticks when process is chosen
             swtch(&c->context, &p->context);
             c->proc = 0;
             found = 1;
