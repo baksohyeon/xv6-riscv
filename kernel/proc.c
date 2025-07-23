@@ -515,8 +515,8 @@ yield(void)
 {
   struct proc *p = myproc();
   acquire(&p->lock);
-  p->state = RUNNABLE;
-  sched();
+  p->state = RUNNABLE; // 다시 RUNNABLE 상태로 변경
+  sched(); // 스케줄러 호출
   release(&p->lock);
 }
 
