@@ -17,7 +17,6 @@ struct spinlock pid_lock;
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
-static void lottery_init(struct proc *p);  // Add function declaration
 
 extern char trampoline[]; // trampoline.S
 
@@ -125,9 +124,10 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  // Initialize lottery scheduling parameters
+  p->tickets = DEFAULT_TICKETS;
+  p->pass_value = 0;
 
-  // Initialize lottery scheduling values
-  lottery_init(p);
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -529,14 +529,6 @@ get_min_pass_proc(void)
     }
   }
   return min_proc;  // Caller must release lock if non-zero
-}
-
-// Initialize process tickets and pass value
-static void
-lottery_init(struct proc *p)
-{
-  p->tickets = DEFAULT_TICKETS;
-  p->pass_value = 0;
 }
 
 // Per-CPU process scheduler.
