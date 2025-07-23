@@ -277,6 +277,19 @@ growproc(int n)
   return 0;
 }
 
+// Set the number of tickets for the current process
+int
+settickets(int number)
+{
+  if(number <= 0)
+    return -1;
+    
+  struct proc *p = myproc();
+  p->tickets = number;  // Atomic operation
+  // 여러 필드를 원자적으로 변경해야하는 경우는 spin lock 필요하긴 함
+  return 0;
+}
+
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
 int
@@ -314,6 +327,9 @@ fork(void)
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
+
+  // Inherit parent's tickets for lottery scheduling
+  np->tickets = p->tickets;
 
   release(&np->lock);
 
@@ -379,6 +395,8 @@ exit(int status)
   acquire(&p->lock);
 
   p->xstate = status;
+  // Reclaim tickets before becoming a zombie
+  p->tickets = 0;  // Atomic operation
   p->state = ZOMBIE;
 
   release(&wait_lock);
