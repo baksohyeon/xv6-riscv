@@ -607,7 +607,6 @@ sched(void)
     panic("sched locks");
   if(p->state == RUNNING)
     panic("sched running");
-  }
   if(intr_get()) {
     panic("sched interruptible");
   }
