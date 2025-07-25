@@ -79,9 +79,7 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  // 타이머 인터럽트인 경우
   if(which_dev == 2)
-  // 타임 슬라이스 종료, CPU 양보
     yield();
 
   usertrapret();
