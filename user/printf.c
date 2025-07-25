@@ -98,8 +98,6 @@ vprintf(int fd, const char *fmt, va_list ap)
           s = "(null)";
         for(; *s; s++)
           putc(fd, *s);
-      } else if(c0 == 'c'){
-        putc(fd, va_arg(ap, uint));
       } else if(c0 == '%'){
         putc(fd, '%');
       } else {

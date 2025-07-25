@@ -113,8 +113,6 @@ printf(char *fmt, ...)
         s = "(null)";
       for(; *s; s++)
         consputc(*s);
-    } else if(c0 == 'c'){
-      consputc(va_arg(ap, uint));
     } else if(c0 == '%'){
       consputc('%');
     } else if(c0 == 0){
