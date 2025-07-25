@@ -598,31 +598,23 @@ scheduler(void)
 void
 sched(void)
 {
-  int intena; // intena is a property of this kernel thread, not this CPU.
-  struct proc *p = myproc(); // 현재 프로세스
+  int intena;
+  struct proc *p = myproc();
 
-  // Check that this process has a lock, and is not running. 
-  if(!holding(&p->lock)) {
+  if(!holding(&p->lock))
     panic("sched p->lock");
-  }
-  if(mycpu()->noff != 1) {
+  if(mycpu()->noff != 1)
     panic("sched locks");
-  }
-  // If the process were running, it would not have called sched().
-  if(p->state == RUNNING) {
+  if(p->state == RUNNING)
     panic("sched running");
   }
   if(intr_get()) {
     panic("sched interruptible");
   }
 
-  // Switch to scheduler.
-  // The process must release its lock before
-  // jumping to the scheduler, and reacquire it
-  // before returning.
   intena = mycpu()->intena;
   swtch(&p->context, &mycpu()->context); // swtch.S assembly code
-  mycpu()->intena = intena; // restore intena
+  mycpu()->intena = intena;
 }
 
 // Give up the CPU for one scheduling round.
