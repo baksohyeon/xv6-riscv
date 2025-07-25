@@ -14,7 +14,7 @@
 
 // from FreeBSD.
 int
-do_rand(unsigned long *ctx)
+do_rand(unsigned long *ctx) // generate a pseudo-random number
 {
 /*
  * Compute x = (7^5 * x) mod (2^31 - 1)

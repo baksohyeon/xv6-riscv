@@ -148,6 +148,9 @@ void            trapinithart(void);
 extern struct spinlock tickslock;
 void            usertrapret(void);
 
+// sysfile.c
+extern _Atomic int      readcount;
+
 // uart.c
 void            uartinit(void);
 void            uartintr(void);

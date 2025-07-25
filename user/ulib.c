@@ -7,34 +7,34 @@
 // wrapper so that it's OK if main() does not call exit().
 //
 void
-start()
+start() // start function to call main and exit
 {
   extern int main();
   main();
-  exit(0);
+  exit(0); 
 }
 
 char*
-strcpy(char *s, const char *t)
+strcpy(char *s, const char *t) // copy string t to s
 {
-  char *os;
+  char *os; // original s
 
-  os = s;
-  while((*s++ = *t++) != 0)
+  os = s; // save original s
+  while((*s++ = *t++) != 0) // copy t to s, including null terminator
     ;
-  return os;
+  return os; // return original s
 }
 
 int
-strcmp(const char *p, const char *q)
+strcmp(const char *p, const char *q) // compare strings p and q
 {
-  while(*p && *p == *q)
-    p++, q++;
-  return (uchar)*p - (uchar)*q;
+  while(*p && *p == *q) // while characters are equal and not null terminator
+    p++, q++; // move to next characters
+  return (uchar)*p - (uchar)*q; // return difference of first non-matching characters (or 0 if all characters match)
 }
 
 uint
-strlen(const char *s)
+strlen(const char *s) // calculate length of string s
 {
   int n;
 
@@ -44,7 +44,7 @@ strlen(const char *s)
 }
 
 void*
-memset(void *dst, int c, uint n)
+memset(void *dst, int c, uint n) // set n bytes of memory at dst to character c
 {
   char *cdst = (char *) dst;
   int i;
@@ -55,34 +55,34 @@ memset(void *dst, int c, uint n)
 }
 
 char*
-strchr(const char *s, char c)
+strchr(const char *s, char c) // find first occurrence of character c in string s
 {
-  for(; *s; s++)
+  for(; *s; s++) // iterate through the string until null terminator
     if(*s == c)
-      return (char*)s;
-  return 0;
+      return (char*)s; // if character matches, return pointer to it
+  return 0;  // if character not found, return null pointer
 }
 
 char*
-gets(char *buf, int max)
+gets(char *buf, int max) // read a line from standard input into buf, up to max characters
 {
   int i, cc;
   char c;
 
-  for(i=0; i+1 < max; ){
-    cc = read(0, &c, 1);
-    if(cc < 1)
+  for(i=0; i+1 < max; ){ // leave space for null terminator
+    cc = read(0, &c, 1); // read one character from standard input
+    if(cc < 1) 
       break;
     buf[i++] = c;
-    if(c == '\n' || c == '\r')
+    if(c == '\n' || c == '\r') // if newline or carriage return is encountered, stop reading
       break;
   }
-  buf[i] = '\0';
+  buf[i] = '\0'; // null-terminate the string
   return buf;
 }
 
 int
-stat(const char *n, struct stat *st)
+stat(const char *n, struct stat *st) // get file status for file named n and store it in st
 {
   int fd;
   int r;
@@ -96,18 +96,18 @@ stat(const char *n, struct stat *st)
 }
 
 int
-atoi(const char *s)
+atoi(const char *s) // convert string s to an integer
 {
   int n;
 
   n = 0;
   while('0' <= *s && *s <= '9')
-    n = n*10 + *s++ - '0';
+    n = n*10 + *s++ - '0'; // convert each character to its integer value and accumulate
   return n;
 }
 
 void*
-memmove(void *vdst, const void *vsrc, int n)
+memmove(void *vdst, const void *vsrc, int n) // move n bytes from vsrc to vdst, handling overlapping regions
 {
   char *dst;
   const char *src;
@@ -127,7 +127,7 @@ memmove(void *vdst, const void *vsrc, int n)
 }
 
 int
-memcmp(const void *s1, const void *s2, uint n)
+memcmp(const void *s1, const void *s2, uint n) // compare n bytes of memory at s1 and s2
 {
   const char *p1 = s1, *p2 = s2;
   while (n-- > 0) {
