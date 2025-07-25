@@ -507,9 +507,9 @@ wait(uint64 addr)
 uint 
 random(void) 
 {
-  static uint seed = 1;
+    static _Atomic uint seed = 1;
   
-  // Linear congruential generator
+  // Linear congruential generator (LGC) algorithm
   seed = seed * 1664525 + 1013904223;
   
   return seed;
