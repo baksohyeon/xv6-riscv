@@ -504,7 +504,7 @@ wait(uint64 addr)
 
 
 
-uint 
+static uint 
 random(void) 
 {
     static _Atomic uint seed = 1;
