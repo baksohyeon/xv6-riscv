@@ -299,7 +299,7 @@ settickets(int number)
   acquire(&p->lock);
   p->tickets = number;
   // Set pass_value to a small random value based on PID to avoid all processes starting at 0
-  p->pass_value = (p->pid * 1000) % (1000000 / number);
+  p->pass_value = (p->pid * 100) % (10000 / number);
   release(&p->lock);
   return 0;
 }
@@ -585,8 +585,10 @@ scheduler(void)
         // Run this process
         p->state = RUNNING;
         c->proc = p;
+        // Update pass value AFTER we're sure this process will run
+        // This ensures pass_value reflects actual CPU usage
+        update_pass(p);
         p->ticks++;  // Increment ticks when process is chosen
-        update_pass(p);  // Update pass value before running
         
         swtch(&c->context, &p->context);
         
@@ -635,7 +637,7 @@ void
 update_pass(struct proc *p)
 {
   if(p->tickets > 0) {
-    p->pass_value += (1000000 / p->tickets);  // Scale factor to avoid floating point
+    p->pass_value += (10000 / p->tickets);  // Smaller stride for better precision
   }
 }
 
@@ -655,6 +657,12 @@ get_min_pass_proc(void)
       min_proc = p;
     }
     release(&p->lock);
+  }
+  
+  // Debug: print which process was selected (more frequently for debugging)
+  static int debug_counter = 0;
+  if(min_proc && min_proc->tickets > 1 && (debug_counter++ % 100) == 0) {
+    printf("Selected PID %d (tickets=%d, pass=%d)\n", min_proc->pid, min_proc->tickets, min_proc->pass_value);
   }
   
   return min_proc;  // Returns without holding any locks

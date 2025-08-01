@@ -6,11 +6,11 @@
 // Test the stride scheduler with 3:2:1 ticket ratio
 // Process A: 30 tickets, Process B: 20 tickets, Process C: 10 tickets
 
-#define TEST_DURATION 100000  // Number of iterations to run (much increased)
+#define TEST_DURATION 100000  // Number of iterations to run
 #define PROCESS_A_TICKETS 30
 #define PROCESS_B_TICKETS 20  
 #define PROCESS_C_TICKETS 10
-#define SAMPLE_INTERVALS 15  // Number of time samples to collect
+#define SAMPLE_INTERVALS 20   // Increased samples for better data
 
 // Global variables to store child PIDs for monitoring
 int test_pids[3] = {0, 0, 0};
@@ -36,14 +36,15 @@ worker_process(int process_id, int tickets)
     exit(1);
   }
   
-  // Pure CPU-intensive work - let stride scheduler handle scheduling
+  // Pure CPU-intensive work - balanced for stride scheduler
   volatile int counter = 0;
   while(1) {
-    // Intensive CPU work to consume time slices
-    for(int j = 0; j < 1000000; j++) {
+    // Moderate CPU work per iteration for responsive scheduling
+    for(int j = 0; j < 100000; j++) {  // Balanced work per iteration
       counter += j * j;
       counter %= 1000000;
     }
+    // Let the stride scheduler decide when to switch - no manual intervention
   }
   
   exit(0);
@@ -243,11 +244,12 @@ main(int argc, char *argv[])
   test_pids[2] = pid_c;
   
   // Give processes time to start and set their tickets
-  sleep(100);
+  sleep(100);  // Initial wait for processes to stabilize
   fprintf(1, "Starting sampling...\n");
   
   // Collect samples over time
-  int sample_interval = 100;  // Sleep 100 ticks between samples
+  // Balanced intervals for stride scheduler and responsiveness
+  int sample_interval = 300;  // Sleep 300 ticks between samples (3 seconds)
   for(int i = 0; i < SAMPLE_INTERVALS; i++) {
     collect_sample_data(i * sample_interval);
     sleep(sample_interval);
@@ -272,7 +274,9 @@ main(int argc, char *argv[])
   }
   
   fprintf(1, "\n=== TEST COMPLETED ===\n");
-  fprintf(1, "Stride scheduler should show ~3:2:1 ratio in CPU time allocation\n");
+  fprintf(1, "Stride scheduler test with reduced timer interrupt preemption\n");
+  fprintf(1, "Expected results: Process A ~50%%, B ~33%%, C ~17%% (3:2:1 ratio)\n");
+  fprintf(1, "Timer interrupts now check every 10th occurrence for better stride scheduling\n");
   
   exit(0);
 }

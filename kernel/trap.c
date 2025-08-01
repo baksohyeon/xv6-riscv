@@ -77,8 +77,18 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
-    yield();
+  // For stride scheduling, significantly reduce timer-based preemption
+  if(which_dev == 2) {
+    static int timer_counter = 0;
+    timer_counter++;
+    // Only check every 20th timer interrupt for balanced responsiveness
+    if((timer_counter % 20) == 0) {
+      struct proc *min_proc = get_min_pass_proc();
+      if(min_proc && min_proc != p) {
+        yield();
+      }
+    }
+  }
 
   usertrapret();
 }
@@ -151,8 +161,19 @@ kerneltrap()
   }
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2 && myproc() != 0)
-    yield();
+  // For stride scheduling, significantly reduce timer-based preemption
+  if(which_dev == 2 && myproc() != 0) {
+    static int kernel_timer_counter = 0;
+    kernel_timer_counter++;
+    // Only check every 20th timer interrupt for balanced responsiveness
+    if((kernel_timer_counter % 20) == 0) {
+      struct proc *p = myproc();
+      struct proc *min_proc = get_min_pass_proc();
+      if(min_proc && min_proc != p) {
+        yield();
+      }
+    }
+  }
 
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.
