@@ -3,7 +3,7 @@
 #include "user/user.h"
 #include "kernel/pstats.h"
 
-// Test the lottery scheduler with 3:2:1 ticket ratio
+// Test the stride scheduler with 3:2:1 ticket ratio
 // Process A: 30 tickets, Process B: 20 tickets, Process C: 10 tickets
 
 #define TEST_DURATION 5000  // Number of iterations to run

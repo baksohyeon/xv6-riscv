@@ -7,11 +7,14 @@
 #include "defs.h"
 #include "pstats.h"
 
+
+
 static uint64 pcg_state[NCPU];
 static uint64 pcg_inc[NCPU]; // stream selection (must be odd)
 
 
 struct cpu cpus[NCPU];
+
 struct proc proc[NPROC];
 
 struct proc *initproc;
@@ -61,7 +64,6 @@ procinit(void)
       p->kstack = KSTACK((int) (p - proc));
   }
   
-  randominit();  
 
 }
 
@@ -131,9 +133,10 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
-  // Initialize lottery scheduling parameters
+  // Initialize stride scheduling parameters
   p->tickets = DEFAULT_TICKETS;
   p->ticks = 0;
+  p->pass_value = 0;
 
 
   // Allocate a trapframe page.
@@ -314,6 +317,7 @@ getpinfo(uint64 addr)
     pstat.tickets[i] = 0;
     pstat.pid[i] = 0;
     pstat.ticks[i] = 0;
+    pstat.pass_value[i] = 0;
   }
   
   // Fill in the pstat structure
@@ -325,11 +329,13 @@ getpinfo(uint64 addr)
       pstat.tickets[i] = p->tickets;
       pstat.pid[i] = p->pid;
       pstat.ticks[i] = p->ticks;
+      pstat.pass_value[i] = p->pass_value;
     } else {
       pstat.inuse[i] = 0;
       pstat.tickets[i] = 0;
       pstat.pid[i] = 0;
       pstat.ticks[i] = 0;
+      pstat.pass_value[i] = 0;
     }
     release(&p->lock);
   }
@@ -379,9 +385,10 @@ fork(void)
 
   pid = np->pid;
 
-  // Inherit parent's tickets for lottery scheduling
+  // Inherit parent's tickets for stride scheduling
   np->tickets = p->tickets;
   np->ticks = 0;  // Child starts with 0 ticks
+  np->pass_value = p->pass_value;  // Inherit parent's pass value
 
   release(&np->lock);
 
@@ -447,9 +454,10 @@ exit(int status)
   acquire(&p->lock);
 
   p->xstate = status;
-  // Reset lottery scheduling fields before becoming a zombie
+  // Reset stride scheduling fields before becoming a zombie
   p->tickets = 0;
   p->ticks = 0;
+  p->pass_value = 0;
   p->state = ZOMBIE;
 
   release(&wait_lock);
@@ -510,58 +518,36 @@ wait(uint64 addr)
 
 
 
-static _Atomic uint random_seed = 1;
 
-static uint 
-random(void) 
-{
-  // Linear congruential generator (LGC) algorithm
-  random_seed = random_seed * 1664525 + 1013904223;
-  
-  return random_seed;
-}
 
-// Initialize random seed for lottery scheduling
-void
-randominit(void)
-{
-    // Initialize each CPU's RNG with unique stream
-    for(int i = 0; i < NCPU; i++) {
-        uint64 seed = (uint64)r_time() ^ ((uint64)i * 0x9E3779B97F4A7C15ULL);
-
-        // Generate initial state using splitmix64
-        uint64 z = (seed + 0x9E3779B97F4A7C15ULL);
-        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
-        z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
-        pcg_state[i] = z ^ (z >> 31);
-
-        // Generate stream ID (must be odd)
-        pcg_inc[i] = ((uint64)i << 1) | 1ULL;
-    }
-}
-
-// Calculate total tickets of all RUNNABLE processes
-static uint
-calculate_total_tickets(void)
+// Get the current minimum pass value from all processes (not just RUNNABLE)
+// This prevents starvation when exec() resets pass_value
+uint
+get_min_pass_value(void)
 {
   struct proc *p;
-  uint total = 0;
+  uint min_pass = 0;  // Start with 0 as default
+  int found_any = 0;
   
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
-    if(p->state == RUNNABLE) {
-      total += p->tickets;
+    if(p->state != UNUSED && p->state != ZOMBIE) {
+      if(!found_any || p->pass_value < min_pass) {
+        min_pass = p->pass_value;
+        found_any = 1;
+      }
     }
     release(&p->lock);
   }
-  return total;
+  
+  return min_pass;
 }
 
 
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
-//  - choose a process to run.
+//  - choose a process to run (stride scheduling).
 //  - swtch to start running that process.
 //  - eventually that process transfers control
 //    via swtch back to the scheduler.
@@ -573,36 +559,50 @@ scheduler(void)
   
   c->proc = 0;
   for(;;){
-    // The most recent process to run may have had interrupts
-    // turned off; enable them to avoid a deadlock if all
-    // processes are waiting.
+    // Enable interrupts on this processor.
     intr_on();
 
     int found = 0;
     uint total_tickets = calculate_total_tickets();
     
     if(total_tickets > 0) {
-      // Pure lottery scheduling
-      uint winner = ((uint64)random() * total_tickets) >> 32;
-      uint counter = 0;
-      
-      for(p = proc; p < &proc[NPROC]; p++) {
-        acquire(&p->lock);
-        if(p->state == RUNNABLE) {
-          counter += p->tickets;
-          if(winner < counter) {
-            // This process wins the lottery
-            p->state = RUNNING;
-            c->proc = p;
-            p->ticks++;  // Increment ticks when process is chosen
-            swtch(&c->context, &p->context);
-            c->proc = 0;
-            found = 1;
-            release(&p->lock);
-            break;
-          }
-        }
+      // 1. strid scheduling
+      p = get_min_pass_proc();
+      if(p) {
+        // Run this process
+        p->state = RUNNING;
+        c->proc = p;
+        update_pass(p);
+        swtch(&c->context, &p->context);
+        
+        // Process is done running for now.
+        c->proc = 0;
         release(&p->lock);
+        found = 1;
+      }
+      
+      // Fallback to lottery scheduling if stride fails
+      if(!found) {
+        // execute the winner process
+        uint winner = random() % total_tickets;
+        uint counter = 0;
+        
+        for(p = proc; p < &proc[NPROC]; p++) {
+          acquire(&p->lock);
+          if(p->state == RUNNABLE) {
+            counter += p->tickets;
+            if(counter > winner) {
+              p->state = RUNNING;
+              c->proc = p;
+              swtch(&c->context, &p->context);
+              c->proc = 0;
+              found = 1;
+              release(&p->lock);
+              break;
+            }
+          }
+          release(&p->lock);
+        }
       }
     }
 
@@ -640,6 +640,84 @@ sched(void)
   intena = mycpu()->intena;
   swtch(&p->context, &mycpu()->context);
   mycpu()->intena = intena;
+}
+
+uint
+calculate_total_tickets(void)
+{
+  struct proc *p;
+  uint total = 0;
+  
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->state == RUNNABLE) {
+      total += p->tickets;
+    }
+    release(&p->lock);
+  }
+  return total;
+}
+
+  void
+update_pass(struct proc *p)
+{
+  if(p->tickets > 0) {
+    p->pass_value += (1000000 / p->tickets);  // Scale factor to avoid floating point
+  }
+}
+
+// Find process with minimum pass value
+struct proc*
+get_min_pass_proc(void)
+{
+  struct proc *p;
+  struct proc *min_proc = 0;
+  uint min_pass = ~0;  // Maximum uint value
+  
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->state == RUNNABLE && p->pass_value < min_pass) {
+      min_pass = p->pass_value;
+      if(min_proc) {
+        release(&min_proc->lock);
+      }
+      min_proc = p;
+    } else {
+      release(&p->lock);
+    }
+  }
+  return min_proc;  // Caller must release lock if non-zero
+}
+
+
+static _Atomic uint random_seed = 1;
+
+uint 
+random(void) 
+{
+  // Linear congruential generator (LGC) algorithm
+  random_seed = random_seed * 1664525 + 1013904223;
+  
+  return random_seed;
+}
+
+// Initialize random seed for lottery scheduling
+void
+randominit(void)
+{
+    // Initialize each CPU's RNG with unique stream
+    for(int i = 0; i < NCPU; i++) {
+        uint64 seed = (uint64)r_time() ^ ((uint64)i * 0x9E3779B97F4A7C15ULL);
+
+        // Generate initial state using splitmix64
+        uint64 z = (seed + 0x9E3779B97F4A7C15ULL);
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+        pcg_state[i] = z ^ (z >> 31);
+
+        // Generate stream ID (must be odd)
+        pcg_inc[i] = ((uint64)i << 1) | 1ULL;
+    }
 }
 
 // Give up the CPU for one scheduling round.

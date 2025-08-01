@@ -120,8 +120,10 @@ exec(char *path, char **argv)
       last = s+1;
   safestrcpy(p->name, last, sizeof(p->name));
     
-  // Reset tickets to default value for lottery scheduling
-  p->tickets = DEFAULT_TICKETS; 
+  // Reset stride scheduling parameters for new program
+  p->tickets = DEFAULT_TICKETS;
+  // Set pass_value to current minimum to prevent starvation of existing processes
+  p->pass_value = get_min_pass_value(); 
 
   // Commit to the user image.
   oldpagetable = p->pagetable;
