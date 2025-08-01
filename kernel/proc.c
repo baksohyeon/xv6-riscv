@@ -7,8 +7,11 @@
 #include "defs.h"
 #include "pstats.h"
 
-struct cpu cpus[NCPU];
+static uint64 pcg_state[NCPU];
+static uint64 pcg_inc[NCPU]; // stream selection (must be odd)
 
+
+struct cpu cpus[NCPU];
 struct proc proc[NPROC];
 
 struct proc *initproc;
@@ -57,6 +60,9 @@ procinit(void)
       p->state = UNUSED;
       p->kstack = KSTACK((int) (p - proc));
   }
+  
+  randominit();  
+
 }
 
 // Must be called with interrupts disabled,
@@ -504,15 +510,34 @@ wait(uint64 addr)
 
 
 
+static _Atomic uint random_seed = 1;
+
 static uint 
 random(void) 
 {
-    static _Atomic uint seed = 1;
-  
   // Linear congruential generator (LGC) algorithm
-  seed = seed * 1664525 + 1013904223;
+  random_seed = random_seed * 1664525 + 1013904223;
   
-  return seed;
+  return random_seed;
+}
+
+// Initialize random seed for lottery scheduling
+void
+randominit(void)
+{
+    // Initialize each CPU's RNG with unique stream
+    for(int i = 0; i < NCPU; i++) {
+        uint64 seed = (uint64)r_time() ^ ((uint64)i * 0x9E3779B97F4A7C15ULL);
+
+        // Generate initial state using splitmix64
+        uint64 z = (seed + 0x9E3779B97F4A7C15ULL);
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+        pcg_state[i] = z ^ (z >> 31);
+
+        // Generate stream ID (must be odd)
+        pcg_inc[i] = ((uint64)i << 1) | 1ULL;
+    }
 }
 
 // Calculate total tickets of all RUNNABLE processes
@@ -564,7 +589,9 @@ scheduler(void)
       for(p = proc; p < &proc[NPROC]; p++) {
         acquire(&p->lock);
         if(p->state == RUNNABLE) {
-          if(counter <= winner && winner < counter + p->tickets) {
+          counter += p->tickets;
+          if(winner < counter) {
+            // This process wins the lottery
             p->state = RUNNING;
             c->proc = p;
             p->ticks++;  // Increment ticks when process is chosen
@@ -574,7 +601,6 @@ scheduler(void)
             release(&p->lock);
             break;
           }
-          counter += p->tickets;
         }
         release(&p->lock);
       }
