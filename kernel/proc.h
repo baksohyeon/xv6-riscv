@@ -95,6 +95,7 @@ struct proc {
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
   uint tickets;         // Number of tickets for lottery scheduling
+  uint pass_value; // Pass value for lottery scheduling
   uint64 ticks;          // Number of times this process has been chosen
 
   // wait_lock must be held when using this:
