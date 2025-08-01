@@ -6,32 +6,43 @@
 // Test the stride scheduler with 3:2:1 ticket ratio
 // Process A: 30 tickets, Process B: 20 tickets, Process C: 10 tickets
 
-#define TEST_DURATION 5000  // Number of iterations to run
+#define TEST_DURATION 100000  // Number of iterations to run (much increased)
 #define PROCESS_A_TICKETS 30
 #define PROCESS_B_TICKETS 20  
 #define PROCESS_C_TICKETS 10
+#define SAMPLE_INTERVALS 15  // Number of time samples to collect
+
+// Global variables to store child PIDs for monitoring
+int test_pids[3] = {0, 0, 0};
+
+// Data collection for graphing
+struct time_sample {
+  int time_point;
+  int ticks_a;
+  int ticks_b; 
+  int ticks_c;
+  int total_ticks;
+} samples[SAMPLE_INTERVALS];
+
+int sample_count = 0;
 
 void
-worker_process(char process_name, int tickets)
+worker_process(int process_id, int tickets)
 {
-  int i;
-  
   // Set the number of tickets for this process
-  if(settickets(tickets) < 0) {
+  int result = settickets(tickets);
+  if(result < 0) {
+    fprintf(2, "Process %d: settickets FAILED!\n", process_id);
     exit(1);
   }
   
-  // Do some work to consume CPU time - more intensive work
-  for(i = 0; i < TEST_DURATION; i++) {
-    // Busy work - just consume CPU cycles
-    volatile int dummy = 0;
-    for(int j = 0; j < 50000; j++) {  // Increased work per iteration
-      dummy += j * j;  // More computational work
-    }
-    
-    // Yield occasionally to allow scheduler to make decisions
-    if(i % 50 == 0) {  // Yield more frequently
-      sleep(1);
+  // Pure CPU-intensive work - let stride scheduler handle scheduling
+  volatile int counter = 0;
+  while(1) {
+    // Intensive CPU work to consume time slices
+    for(int j = 0; j < 1000000; j++) {
+      counter += j * j;
+      counter %= 1000000;
     }
   }
   
@@ -39,7 +50,105 @@ worker_process(char process_name, int tickets)
 }
 
 void
-print_process_stats()
+collect_sample_data(int time_point)
+{
+  struct pstat ps;
+  int i;
+  
+  if(sample_count >= SAMPLE_INTERVALS) {
+    return;
+  }
+  
+  if(getpinfo(&ps) < 0) {
+    fprintf(2, "Failed to get process info for sample\n");
+    return;
+  }
+  
+  samples[sample_count].time_point = time_point;
+  samples[sample_count].ticks_a = 0;
+  samples[sample_count].ticks_b = 0;
+  samples[sample_count].ticks_c = 0;
+  samples[sample_count].total_ticks = 0;
+  
+  int tickets_a = 0, tickets_b = 0, tickets_c = 0;
+  int found_a = 0, found_b = 0, found_c = 0;
+  
+  // Find our test processes and collect their ticks and tickets
+  for(i = 0; i < NPROC; i++) {
+    if(ps.inuse[i]) {
+      if(ps.pid[i] == test_pids[0]) {
+        samples[sample_count].ticks_a = ps.ticks[i];
+        tickets_a = ps.tickets[i];
+        found_a = 1;
+      } else if(ps.pid[i] == test_pids[1]) {
+        samples[sample_count].ticks_b = ps.ticks[i];
+        tickets_b = ps.tickets[i];
+        found_b = 1;
+      } else if(ps.pid[i] == test_pids[2]) {
+        samples[sample_count].ticks_c = ps.ticks[i];
+        tickets_c = ps.tickets[i];
+        found_c = 1;
+      }
+    }
+  }
+  
+  samples[sample_count].total_ticks = samples[sample_count].ticks_a + 
+                                      samples[sample_count].ticks_b + 
+                                      samples[sample_count].ticks_c;
+  
+  // Also get pass_value information
+  int pass_a = 0, pass_b = 0, pass_c = 0;
+  for(i = 0; i < NPROC; i++) {
+    if(ps.inuse[i]) {
+      if(ps.pid[i] == test_pids[0]) {
+        pass_a = ps.pass_value[i];
+      } else if(ps.pid[i] == test_pids[1]) {
+        pass_b = ps.pass_value[i];
+      } else if(ps.pid[i] == test_pids[2]) {
+        pass_c = ps.pass_value[i];
+      }
+    }
+  }
+  
+  fprintf(1, "Sample %d (t=%d): A=%d(t%d,p%d)%s, B=%d(t%d,p%d)%s, C=%d(t%d,p%d)%s, Total=%d\n", 
+          sample_count + 1, time_point,
+          samples[sample_count].ticks_a, tickets_a, pass_a, found_a ? "" : "X",
+          samples[sample_count].ticks_b, tickets_b, pass_b, found_b ? "" : "X", 
+          samples[sample_count].ticks_c, tickets_c, pass_c, found_c ? "" : "X",
+          samples[sample_count].total_ticks);
+  
+  sample_count++;
+}
+
+void
+print_csv_data()
+{
+  int i;
+  
+  fprintf(1, "\n=== CSV DATA FOR GRAPHING ===\n");
+  fprintf(1, "Time,ProcessA_Ticks,ProcessB_Ticks,ProcessC_Ticks,ProcessA_Percent,ProcessB_Percent,ProcessC_Percent\n");
+  
+  for(i = 0; i < sample_count; i++) {
+    int total = samples[i].total_ticks;
+    int percent_a = total > 0 ? (samples[i].ticks_a * 100) / total : 0;
+    int percent_b = total > 0 ? (samples[i].ticks_b * 100) / total : 0;
+    int percent_c = total > 0 ? (samples[i].ticks_c * 100) / total : 0;
+    
+    fprintf(1, "%d,%d,%d,%d,%d,%d,%d\n",
+            samples[i].time_point,
+            samples[i].ticks_a,
+            samples[i].ticks_b,
+            samples[i].ticks_c,
+            percent_a,
+            percent_b,
+            percent_c);
+  }
+  
+  fprintf(1, "=== END CSV DATA ===\n");
+}
+
+void
+print_final_stats()
 {
   struct pstat ps;
   int i;
@@ -49,35 +158,42 @@ print_process_stats()
     return;
   }
   
-  fprintf(1, "\nProcess Statistics (All active processes):\n");
-  fprintf(1, "PID\tTickets\tTicks\tRatio\n");
-  fprintf(1, "---\t-------\t-----\t-----\n");
+  fprintf(1, "\n=== FINAL STRIDE SCHEDULER RESULTS ===\n");
+  fprintf(1, "PID\tTickets\tTicks\tPercent\tExpected\n");
+  fprintf(1, "---\t-------\t-----\t-------\t--------\n");
   
-  int total_ticks = 0;
-  int test_process_ticks = 0;
+  int total_test_ticks = 0;
+  int ticks_a = 0, ticks_b = 0, ticks_c = 0;
   
-  // Calculate total ticks from all processes
+  // Find our test processes
   for(i = 0; i < NPROC; i++) {
     if(ps.inuse[i] && ps.ticks[i] > 0) {
-      total_ticks += ps.ticks[i];
-    }
-  }
-  
-  // Show all processes with ticks
-  for(i = 0; i < NPROC; i++) {
-    if(ps.inuse[i] && ps.ticks[i] > 0) {
-      int ratio = total_ticks > 0 ? (ps.ticks[i] * 100) / total_ticks : 0;
-      fprintf(1, "%d\t%d\t%d\t%d%%\n", ps.pid[i], ps.tickets[i], ps.ticks[i], ratio);
-      
-      // Count ticks from test processes (those with non-default ticket counts)
-      if(ps.tickets[i] == PROCESS_A_TICKETS || ps.tickets[i] == PROCESS_B_TICKETS || ps.tickets[i] == PROCESS_C_TICKETS) {
-        test_process_ticks += ps.ticks[i];
+      if(ps.pid[i] == test_pids[0]) {
+        ticks_a = ps.ticks[i];
+        total_test_ticks += ticks_a;
+      } else if(ps.pid[i] == test_pids[1]) {
+        ticks_b = ps.ticks[i];
+        total_test_ticks += ticks_b;
+      } else if(ps.pid[i] == test_pids[2]) {
+        ticks_c = ps.ticks[i];
+        total_test_ticks += ticks_c;
       }
     }
   }
   
-  fprintf(1, "\nTotal ticks: %d\n", total_ticks);
-  fprintf(1, "Test process ticks: %d\n", test_process_ticks);
+  if(total_test_ticks > 0) {
+    int percent_a = (ticks_a * 100) / total_test_ticks;
+    int percent_b = (ticks_b * 100) / total_test_ticks;
+    int percent_c = (ticks_c * 100) / total_test_ticks;
+    
+    fprintf(1, "%d\t%d\t%d\t%d%%\t50%% [Process A]\n", test_pids[0], PROCESS_A_TICKETS, ticks_a, percent_a);
+    fprintf(1, "%d\t%d\t%d\t%d%%\t33%% [Process B]\n", test_pids[1], PROCESS_B_TICKETS, ticks_b, percent_b);
+    fprintf(1, "%d\t%d\t%d\t%d%%\t17%% [Process C]\n", test_pids[2], PROCESS_C_TICKETS, ticks_c, percent_c);
+    
+    fprintf(1, "\nTotal test process ticks: %d\n", total_test_ticks);
+    fprintf(1, "Ticket ratio: %d:%d:%d (3:2:1)\n", PROCESS_A_TICKETS, PROCESS_B_TICKETS, PROCESS_C_TICKETS);
+    fprintf(1, "Actual ratio: %d:%d:%d\n", ticks_a, ticks_b, ticks_c);
+  }
 }
 
 int
@@ -85,16 +201,14 @@ main(int argc, char *argv[])
 {
   int pid_a, pid_b, pid_c;
   
-  fprintf(1, "Lottery Scheduler Test - 3:2:1 Ticket Ratio\n");
-  fprintf(1, "Process A: %d tickets\n", PROCESS_A_TICKETS);
-  fprintf(1, "Process B: %d tickets\n", PROCESS_B_TICKETS);
-  fprintf(1, "Process C: %d tickets\n", PROCESS_C_TICKETS);
-  fprintf(1, "Expected ratio: 3:2:1 (50%%:33.3%%:16.7%%)\n\n");
+  fprintf(1, "=== STRIDE SCHEDULER TEST ===\n");
+  fprintf(1, "Testing 3:2:1 ticket ratio (30:20:10 tickets)\n");
+  fprintf(1, "Expected CPU distribution: 50%%:33%%:17%%\n\n");
   
   // Fork process A
   pid_a = fork();
   if(pid_a == 0) {
-    worker_process('A', PROCESS_A_TICKETS);
+    worker_process(1, PROCESS_A_TICKETS);
   } else if(pid_a < 0) {
     fprintf(2, "Failed to fork process A\n");
     exit(1);
@@ -103,7 +217,7 @@ main(int argc, char *argv[])
   // Fork process B
   pid_b = fork();
   if(pid_b == 0) {
-    worker_process('B', PROCESS_B_TICKETS);
+    worker_process(2, PROCESS_B_TICKETS);
   } else if(pid_b < 0) {
     fprintf(2, "Failed to fork process B\n");
     exit(1);
@@ -112,28 +226,53 @@ main(int argc, char *argv[])
   // Fork process C
   pid_c = fork();
   if(pid_c == 0) {
-    worker_process('C', PROCESS_C_TICKETS);
+    worker_process(3, PROCESS_C_TICKETS);
   } else if(pid_c < 0) {
     fprintf(2, "Failed to fork process C\n");
     exit(1);
   }
   
-  // Parent process waits for all children to complete
-  fprintf(1, "Starting processes...\n");
-  fprintf(1, "Process A (PID %d): 30 tickets\n", pid_a);
-  fprintf(1, "Process B (PID %d): 20 tickets\n", pid_b);  
-  fprintf(1, "Process C (PID %d): 10 tickets\n", pid_c);
-  fprintf(1, "Waiting for processes to complete...\n\n");
+  // Parent monitoring
+  fprintf(1, "Forked processes: A=PID%d, B=PID%d, C=PID%d\n", pid_a, pid_b, pid_c);
+  fprintf(1, "Process A: %d tickets, Process B: %d tickets, Process C: %d tickets\n", 
+          PROCESS_A_TICKETS, PROCESS_B_TICKETS, PROCESS_C_TICKETS);
   
-  wait(0);  // Wait for process A
-  wait(0);  // Wait for process B  
-  wait(0);  // Wait for process C
+  // Store PIDs for monitoring
+  test_pids[0] = pid_a;
+  test_pids[1] = pid_b;
+  test_pids[2] = pid_c;
   
-  fprintf(1, "All processes completed. Final statistics:\n");
-  print_process_stats();
+  // Give processes time to start and set their tickets
+  sleep(100);
+  fprintf(1, "Starting sampling...\n");
   
-  fprintf(1, "\nLottery scheduler test completed.\n");
-  fprintf(1, "Expected: Process A should get ~50%%, B ~33%%, C ~17%% of CPU time\n");
+  // Collect samples over time
+  int sample_interval = 100;  // Sleep 100 ticks between samples
+  for(int i = 0; i < SAMPLE_INTERVALS; i++) {
+    collect_sample_data(i * sample_interval);
+    sleep(sample_interval);
+  }
+  
+  // Print results BEFORE killing processes
+  fprintf(1, "\nSampling complete. Collecting final statistics...\n");
+  print_csv_data();
+  print_final_stats();
+  
+  // Now kill all test processes
+  fprintf(1, "\nTerminating test processes...\n");
+  kill(pid_a);
+  kill(pid_b);
+  kill(pid_c);
+  
+  // Wait for processes to finish
+  int status;
+  for(int i = 0; i < 3; i++) {
+    int finished_pid = wait(&status);
+    fprintf(1, "Process PID%d terminated\n", finished_pid);
+  }
+  
+  fprintf(1, "\n=== TEST COMPLETED ===\n");
+  fprintf(1, "Stride scheduler should show ~3:2:1 ratio in CPU time allocation\n");
   
   exit(0);
 }

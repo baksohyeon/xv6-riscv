@@ -30,6 +30,10 @@ exec(char *path, char **argv)
   struct proghdr ph; // program header for the ELF file
   pagetable_t pagetable = 0, oldpagetable; // page table for the process
   struct proc *p = myproc(); // current process
+  uint min_pass; // for stride scheduling
+
+  // Get minimum pass value early to avoid potential deadlock
+  min_pass = get_min_pass_value();
 
   begin_op(); // start a file operation
 
@@ -123,7 +127,7 @@ exec(char *path, char **argv)
   // Reset stride scheduling parameters for new program
   p->tickets = DEFAULT_TICKETS;
   // Set pass_value to current minimum to prevent starvation of existing processes
-  p->pass_value = get_min_pass_value(); 
+  p->pass_value = min_pass; 
 
   // Commit to the user image.
   oldpagetable = p->pagetable;
