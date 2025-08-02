@@ -77,15 +77,25 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  // For stride scheduling, significantly reduce timer-based preemption
+  // For stride scheduling, use selective preemption based on pass values
   if(which_dev == 2) {
     static int timer_counter = 0;
     timer_counter++;
-    // Only check every 20th timer interrupt for balanced responsiveness
-    if((timer_counter % 20) == 0) {
+    // Check every 10th timer interrupt for better responsiveness
+    if((timer_counter % 10) == 0) {
       struct proc *min_proc = get_min_pass_proc();
+      // Only yield if there's a process with significantly lower pass value
       if(min_proc && min_proc != p) {
-        yield();
+        acquire(&p->lock);
+        uint current_pass = p->pass_value;
+        uint min_pass = min_proc->pass_value;
+        release(&p->lock);
+        
+        // Yield if the minimum pass value is significantly lower
+        // This prevents unnecessary context switches for small differences
+        if(min_pass + (10000 / (p->tickets ? p->tickets : 1)) < current_pass) {
+          yield();
+        }
       }
     }
   }
@@ -161,16 +171,25 @@ kerneltrap()
   }
 
   // give up the CPU if this is a timer interrupt.
-  // For stride scheduling, significantly reduce timer-based preemption
+  // For stride scheduling, use selective preemption based on pass values
   if(which_dev == 2 && myproc() != 0) {
     static int kernel_timer_counter = 0;
     kernel_timer_counter++;
-    // Only check every 20th timer interrupt for balanced responsiveness
-    if((kernel_timer_counter % 20) == 0) {
+    // Check every 10th timer interrupt for better responsiveness
+    if((kernel_timer_counter % 10) == 0) {
       struct proc *p = myproc();
       struct proc *min_proc = get_min_pass_proc();
+      // Only yield if there's a process with significantly lower pass value
       if(min_proc && min_proc != p) {
-        yield();
+        acquire(&p->lock);
+        uint current_pass = p->pass_value;
+        uint min_pass = min_proc->pass_value;
+        release(&p->lock);
+        
+        // Yield if the minimum pass value is significantly lower
+        if(min_pass + (10000 / (p->tickets ? p->tickets : 1)) < current_pass) {
+          yield();
+        }
       }
     }
   }

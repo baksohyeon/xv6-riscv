@@ -10,7 +10,7 @@
 #define PROCESS_A_TICKETS 30
 #define PROCESS_B_TICKETS 20  
 #define PROCESS_C_TICKETS 10
-#define SAMPLE_INTERVALS 20   // Increased samples for better data
+#define SAMPLE_INTERVALS 25   // More samples for better graph data
 
 // Global variables to store child PIDs for monitoring
 int test_pids[3] = {0, 0, 0};
@@ -146,6 +146,13 @@ print_csv_data()
   }
   
   fprintf(1, "=== END CSV DATA ===\n");
+  
+  // Print instructions for graphing
+  fprintf(1, "\n=== GRAPHING INSTRUCTIONS ===\n");
+  fprintf(1, "To generate graphs, save this output to a file and run:\n");
+  fprintf(1, "  $ testlottery > results.txt\n");
+  fprintf(1, "  $ python3 plot_scheduler_results.py results.txt\n");
+  fprintf(1, "This will create stride_scheduler_analysis.png and stride_scheduler_simple.png\n");
 }
 
 void
@@ -247,13 +254,22 @@ main(int argc, char *argv[])
   sleep(100);  // Initial wait for processes to stabilize
   fprintf(1, "Starting sampling...\n");
   
-  // Collect samples over time
-  // Balanced intervals for stride scheduler and responsiveness
-  int sample_interval = 300;  // Sleep 300 ticks between samples (3 seconds)
+  // Collect samples over time with progressive intervals
+  // Start with shorter intervals, then increase for better data spread
+  fprintf(1, "Progress: ");
   for(int i = 0; i < SAMPLE_INTERVALS; i++) {
+    // Progressive sampling: shorter intervals at start, longer later
+    int sample_interval = 200 + (i * 50);  // 200, 250, 300, ...
     collect_sample_data(i * sample_interval);
+    
+    // Show progress
+    if(i % 5 == 0) {
+      fprintf(1, "[%d%%] ", (i * 100) / SAMPLE_INTERVALS);
+    }
+    
     sleep(sample_interval);
   }
+  fprintf(1, "[100%%]\n");
   
   // Print results BEFORE killing processes
   fprintf(1, "\nSampling complete. Collecting final statistics...\n");
@@ -274,9 +290,14 @@ main(int argc, char *argv[])
   }
   
   fprintf(1, "\n=== TEST COMPLETED ===\n");
-  fprintf(1, "Stride scheduler test with reduced timer interrupt preemption\n");
+  fprintf(1, "Stride scheduler test with optimized timer preemption\n");
   fprintf(1, "Expected results: Process A ~50%%, B ~33%%, C ~17%% (3:2:1 ratio)\n");
-  fprintf(1, "Timer interrupts now check every 10th occurrence for better stride scheduling\n");
+  fprintf(1, "Features implemented:\n");
+  fprintf(1, "  - Pass value normalization to prevent overflow\n");
+  fprintf(1, "  - Smart timer preemption (every 10th interrupt)\n");
+  fprintf(1, "  - Starvation prevention logic\n");
+  fprintf(1, "  - Proportional scheduling with stride algorithm\n");
+  fprintf(1, "\nTo generate graphs: save output to file and use plot_scheduler_results.py\n");
   
   exit(0);
 }

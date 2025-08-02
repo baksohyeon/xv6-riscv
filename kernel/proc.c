@@ -295,11 +295,23 @@ settickets(int number)
     return -1;
     
   struct proc *p = myproc();
-  // acquire lock to ensure atomic operation
   acquire(&p->lock);
+  
+  // If increasing tickets significantly, adjust pass_value to prevent unfair advantage
+  if(number > p->tickets * 2 && p->tickets > 0) {
+    // Scale pass_value proportionally to maintain fairness
+    p->pass_value = p->pass_value * p->tickets / number;
+  }
+  
   p->tickets = number;
-  // Set pass_value to a small random value based on PID to avoid all processes starting at 0
-  p->pass_value = (p->pid * 100) % (10000 / number);
+  
+  // For new processes or when tickets is being set for the first time
+  if(p->pass_value == 0) {
+    // Set to current minimum to prevent starvation
+    uint min_pass = get_min_pass_value();
+    p->pass_value = min_pass;
+  }
+  
   release(&p->lock);
   return 0;
 }
@@ -521,6 +533,38 @@ wait(uint64 addr)
 
 
 
+// Normalize pass values when they get too large to prevent overflow
+void
+normalize_pass_values(void)
+{
+  struct proc *p;
+  uint min_pass = ~0;  // Start with maximum value
+  int found_any = 0;
+  
+  // First pass: find the minimum pass value
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->state != UNUSED && p->state != ZOMBIE) {
+      if(!found_any || p->pass_value < min_pass) {
+        min_pass = p->pass_value;
+        found_any = 1;
+      }
+    }
+    release(&p->lock);
+  }
+  
+  // Second pass: subtract minimum from all pass values
+  if(found_any && min_pass > 0) {
+    for(p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if(p->state != UNUSED && p->state != ZOMBIE) {
+        p->pass_value -= min_pass;
+      }
+      release(&p->lock);
+    }
+  }
+}
+
 // Get the current minimum pass value from all processes (not just RUNNABLE)
 // This prevents starvation when exec() resets pass_value
 // Returns 0 if called from exec context to avoid deadlock
@@ -569,11 +613,18 @@ scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
+  static uint schedule_count = 0;
   
   c->proc = 0;
   for(;;){
     // Enable interrupts on this processor.
     intr_on();
+
+    // Normalize pass values periodically to prevent overflow
+    schedule_count++;
+    if((schedule_count % 10000) == 0) {
+      normalize_pass_values();
+    }
 
     // Pure stride scheduling: find process with minimum pass value
     p = get_min_pass_proc();
@@ -637,7 +688,20 @@ void
 update_pass(struct proc *p)
 {
   if(p->tickets > 0) {
-    p->pass_value += (10000 / p->tickets);  // Smaller stride for better precision
+    uint stride = 10000 / p->tickets;
+    p->pass_value += stride;
+    
+    // Prevent individual process pass_value from getting too large
+    // This helps with overflow prevention at the process level
+    if(p->pass_value > 1000000) {  // 1 million threshold
+      uint global_min = get_min_pass_value();
+      if(global_min > 0 && p->pass_value > global_min + 100000) {
+        p->pass_value = global_min + stride;
+      }
+    }
+  } else {
+    // Process with 0 tickets should not run, but if it does, give it very low priority
+    p->pass_value += 100000;
   }
 }
 
@@ -648,21 +712,26 @@ get_min_pass_proc(void)
   struct proc *p;
   struct proc *min_proc = 0;
   uint min_pass = ~0;  // Maximum uint value
+  int runnable_count = 0;
   
-  // First pass: find the process with minimum pass value
+  // Find the process with minimum pass value among runnable processes
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
-    if(p->state == RUNNABLE && p->pass_value < min_pass) {
-      min_pass = p->pass_value;
-      min_proc = p;
+    if(p->state == RUNNABLE) {
+      runnable_count++;
+      if(p->pass_value < min_pass) {
+        min_pass = p->pass_value;
+        min_proc = p;
+      }
     }
     release(&p->lock);
   }
   
-  // Debug: print which process was selected (more frequently for debugging)
+  // Debug: print scheduling info less frequently and when there are multiple processes
   static int debug_counter = 0;
-  if(min_proc && min_proc->tickets > 1 && (debug_counter++ % 100) == 0) {
-    printf("Selected PID %d (tickets=%d, pass=%d)\n", min_proc->pid, min_proc->tickets, min_proc->pass_value);
+  if(min_proc && runnable_count > 1 && (debug_counter++ % 1000) == 0) {
+    printf("[STRIDE] PID=%d tickets=%d pass=%d (runnable=%d)\n", 
+           min_proc->pid, min_proc->tickets, min_proc->pass_value, runnable_count);
   }
   
   return min_proc;  // Returns without holding any locks
