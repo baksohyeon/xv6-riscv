@@ -3,6 +3,8 @@
 #include "memlayout.h"
 #include "elf.h"
 #include "riscv.h"
+#include "spinlock.h"
+#include "proc.h"
 #include "defs.h"
 #include "fs.h"
 
@@ -448,4 +450,76 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+// Make pages in the range [addr, addr+len*PGSIZE) read-only
+// addr must be page-aligned, len > 0
+// Returns 0 on success, -1 on error
+int
+mprotect(uint64 addr, int len)
+{
+  struct proc *p = myproc();
+  pte_t *pte;
+  uint64 a;
+  
+  // Validate parameters
+  if(len <= 0)
+    return -1;
+  if(addr % PGSIZE != 0)  // addr must be page-aligned
+    return -1;
+  if(addr >= p->sz)  // addr must be within address space
+    return -1;
+  if(addr + len * PGSIZE > p->sz)  // range must be within address space
+    return -1;
+  
+  // Walk through each page and remove write permission
+  for(a = addr; a < addr + len * PGSIZE; a += PGSIZE) {
+    pte = walk(p->pagetable, a, 0);
+    if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0)
+      return -1;  // page not present or not user accessible
+    
+    // Remove write permission
+    *pte &= ~PTE_W;
+  }
+  
+  // Flush TLB to ensure hardware sees the changes
+  sfence_vma();
+  
+  return 0;
+}
+
+// Make pages in the range [addr, addr+len*PGSIZE) read-write
+// addr must be page-aligned, len > 0
+// Returns 0 on success, -1 on error
+int
+munprotect(uint64 addr, int len)
+{
+  struct proc *p = myproc();
+  pte_t *pte;
+  uint64 a;
+  
+  // Validate parameters
+  if(len <= 0)
+    return -1;
+  if(addr % PGSIZE != 0)  // addr must be page-aligned
+    return -1;
+  if(addr >= p->sz)  // addr must be within address space
+    return -1;
+  if(addr + len * PGSIZE > p->sz)  // range must be within address space
+    return -1;
+  
+  // Walk through each page and add write permission
+  for(a = addr; a < addr + len * PGSIZE; a += PGSIZE) {
+    pte = walk(p->pagetable, a, 0);
+    if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0)
+      return -1;  // page not present or not user accessible
+    
+    // Add write permission
+    *pte |= PTE_W;
+  }
+  
+  // Flush TLB to ensure hardware sees the changes
+  sfence_vma();
+  
+  return 0;
 }
