@@ -709,6 +709,9 @@ update_pass(struct proc *p)
 struct proc*
 get_min_pass_proc(void)
 {
+  // uint pass_value_list[10] = {};
+  // uint pid_list[10] = {};
+
   struct proc *p;
   struct proc *min_proc = 0;
   uint min_pass = ~0;  // Maximum uint value
@@ -718,6 +721,11 @@ get_min_pass_proc(void)
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
     if(p->state == RUNNABLE) {
+      // if (runnable_count < 10) {
+      //   pass_value_list[runnable_count] = p->pass_value;
+      //   pid_list[runnable_count] = p->pid;
+      // }
+
       runnable_count++;
       if(p->pass_value < min_pass) {
         min_pass = p->pass_value;
@@ -727,13 +735,33 @@ get_min_pass_proc(void)
     release(&p->lock);
   }
   
-  // Debug: print scheduling info less frequently and when there are multiple processes
-  static int debug_counter = 0;
-  if(min_proc && runnable_count > 1 && (debug_counter++ % 1000) == 0) {
-    printf("[STRIDE] PID=%d tickets=%d pass=%d (runnable=%d)\n", 
-           min_proc->pid, min_proc->tickets, min_proc->pass_value, runnable_count);
-  }
-  
+  // // Debug: print scheduling info less frequently and when there are multiple processes
+  // if(min_proc && runnable_count > 1) {
+  //   printf("[STRIDE] PID=%d tickets=%d pass=%d (runnable=%d)\n", 
+  //          min_proc->pid, min_proc->tickets, min_proc->pass_value, runnable_count);
+  // }
+
+
+
+  // if (runnable_count > 0) {
+  //   int cpu_id = cpuid();
+  //   printf("[%d] pass value list: \t%d\t %d\t %d\t %d\t %d\t %d\t %d\t %d\t %d\t %d\n"
+  //     "[%d] pid list       : \t%d\t %d\t %d\t %d\t %d\t %d\t %d\t %d\t %d\t %d\t\n"
+  //     "min pass value \t%d\n"
+  //     "runnable count \t%d\n\n",
+  //       cpu_id,     
+  //           pass_value_list[0], 
+  //          pass_value_list[1], pass_value_list[2], pass_value_list[3],
+  //          pass_value_list[4], pass_value_list[5], pass_value_list[6],
+  //          pass_value_list[7], pass_value_list[8], pass_value_list[9],
+  //         cpu_id,      
+  //     pid_list[0], 
+  //          pid_list[1], pid_list[2], pid_list[3],
+  //          pid_list[4], pid_list[5], pid_list[6],
+  //          pid_list[7], pid_list[8], pid_list[9], min_pass, runnable_count );
+
+  // }
+
   return min_proc;  // Returns without holding any locks
 }
 
