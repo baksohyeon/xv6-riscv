@@ -10,7 +10,7 @@
 #define PROCESS_A_TICKETS 30
 #define PROCESS_B_TICKETS 20  
 #define PROCESS_C_TICKETS 10
-#define SAMPLE_INTERVALS 25   // More samples for better graph data
+#define SAMPLE_INTERVALS 10
 
 // Global variables to store child PIDs for monitoring
 int test_pids[3] = {0, 0, 0};
@@ -36,15 +36,12 @@ worker_process(int process_id, int tickets)
     exit(1);
   }
   
-  // Pure CPU-intensive work - balanced for stride scheduler
   volatile int counter = 0;
   while(1) {
-    // Moderate CPU work per iteration for responsive scheduling
-    for(int j = 0; j < 100000; j++) {  // Balanced work per iteration
+    for(int j = 0; j < 10000; j++) {
       counter += j * j;
       counter %= 1000000;
     }
-    // Let the stride scheduler decide when to switch - no manual intervention
   }
   
   exit(0);
@@ -74,7 +71,6 @@ collect_sample_data(int time_point)
   int tickets_a = 0, tickets_b = 0, tickets_c = 0;
   int found_a = 0, found_b = 0, found_c = 0;
   
-  // Find our test processes and collect their ticks and tickets
   for(i = 0; i < NPROC; i++) {
     if(ps.inuse[i]) {
       if(ps.pid[i] == test_pids[0]) {
@@ -97,7 +93,6 @@ collect_sample_data(int time_point)
                                       samples[sample_count].ticks_b + 
                                       samples[sample_count].ticks_c;
   
-  // Also get pass_value information
   int pass_a = 0, pass_b = 0, pass_c = 0;
   for(i = 0; i < NPROC; i++) {
     if(ps.inuse[i]) {
@@ -121,39 +116,6 @@ collect_sample_data(int time_point)
   sample_count++;
 }
 
-void
-print_csv_data()
-{
-  int i;
-  
-  fprintf(1, "\n=== CSV DATA FOR GRAPHING ===\n");
-  fprintf(1, "Time,ProcessA_Ticks,ProcessB_Ticks,ProcessC_Ticks,ProcessA_Percent,ProcessB_Percent,ProcessC_Percent\n");
-  
-  for(i = 0; i < sample_count; i++) {
-    int total = samples[i].total_ticks;
-    int percent_a = total > 0 ? (samples[i].ticks_a * 100) / total : 0;
-    int percent_b = total > 0 ? (samples[i].ticks_b * 100) / total : 0;
-    int percent_c = total > 0 ? (samples[i].ticks_c * 100) / total : 0;
-    
-    fprintf(1, "%d,%d,%d,%d,%d,%d,%d\n",
-            samples[i].time_point,
-            samples[i].ticks_a,
-            samples[i].ticks_b,
-            samples[i].ticks_c,
-            percent_a,
-            percent_b,
-            percent_c);
-  }
-  
-  fprintf(1, "=== END CSV DATA ===\n");
-  
-  // Print instructions for graphing
-  fprintf(1, "\n=== GRAPHING INSTRUCTIONS ===\n");
-  fprintf(1, "To generate graphs, save this output to a file and run:\n");
-  fprintf(1, "  $ testlottery > results.txt\n");
-  fprintf(1, "  $ python3 plot_scheduler_results.py results.txt\n");
-  fprintf(1, "This will create stride_scheduler_analysis.png and stride_scheduler_simple.png\n");
-}
 
 void
 print_final_stats()
@@ -173,7 +135,6 @@ print_final_stats()
   int total_test_ticks = 0;
   int ticks_a = 0, ticks_b = 0, ticks_c = 0;
   
-  // Find our test processes
   for(i = 0; i < NPROC; i++) {
     if(ps.inuse[i] && ps.ticks[i] > 0) {
       if(ps.pid[i] == test_pids[0]) {
@@ -250,20 +211,15 @@ main(int argc, char *argv[])
   test_pids[1] = pid_b;
   test_pids[2] = pid_c;
   
-  // Give processes time to start and set their tickets
-  sleep(100);  // Initial wait for processes to stabilize
+  sleep(20);
   fprintf(1, "Starting sampling...\n");
   
-  // Collect samples over time with progressive intervals
-  // Start with shorter intervals, then increase for better data spread
   fprintf(1, "Progress: ");
   for(int i = 0; i < SAMPLE_INTERVALS; i++) {
-    // Progressive sampling: shorter intervals at start, longer later
-    int sample_interval = 200 + (i * 50);  // 200, 250, 300, ...
+    int sample_interval = 50 + (i * 10);  // 50, 60, 70, 80, 90, 100, 110, 120, 130, 140
     collect_sample_data(i * sample_interval);
     
-    // Show progress
-    if(i % 5 == 0) {
+    if(i % 2 == 0) {
       fprintf(1, "[%d%%] ", (i * 100) / SAMPLE_INTERVALS);
     }
     
@@ -271,33 +227,18 @@ main(int argc, char *argv[])
   }
   fprintf(1, "[100%%]\n");
   
-  // Print results BEFORE killing processes
   fprintf(1, "\nSampling complete. Collecting final statistics...\n");
-  print_csv_data();
   print_final_stats();
   
-  // Now kill all test processes
   fprintf(1, "\nTerminating test processes...\n");
   kill(pid_a);
   kill(pid_b);
   kill(pid_c);
   
-  // Wait for processes to finish
   int status;
   for(int i = 0; i < 3; i++) {
     int finished_pid = wait(&status);
     fprintf(1, "Process PID%d terminated\n", finished_pid);
   }
-  
-  fprintf(1, "\n=== TEST COMPLETED ===\n");
-  fprintf(1, "Stride scheduler test with optimized timer preemption\n");
-  fprintf(1, "Expected results: Process A ~50%%, B ~33%%, C ~17%% (3:2:1 ratio)\n");
-  fprintf(1, "Features implemented:\n");
-  fprintf(1, "  - Pass value normalization to prevent overflow\n");
-  fprintf(1, "  - Smart timer preemption (every 10th interrupt)\n");
-  fprintf(1, "  - Starvation prevention logic\n");
-  fprintf(1, "  - Proportional scheduling with stride algorithm\n");
-  fprintf(1, "\nTo generate graphs: save output to file and use plot_scheduler_results.py\n");
-  
   exit(0);
 }
