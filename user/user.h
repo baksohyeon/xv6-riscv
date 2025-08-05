@@ -1,5 +1,7 @@
 struct stat;
 
+#include "kernel/pstats.h"
+
 // system calls
 int fork(void); // Creates a new process
 int exit(int) __attribute__((noreturn)); // Terminates the current process
@@ -23,6 +25,8 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 int getreadcount(void);
+int settickets(int);
+int getpinfo(struct pstat*);
 
 // ulib.c
 int stat(const char*, struct stat*);
