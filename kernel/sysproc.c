@@ -109,3 +109,27 @@ sys_getpinfo(void)
   argaddr(0, &addr);
   return getpinfo(addr);
 }
+
+uint64
+sys_mprotect(void)
+{
+  uint64 addr;
+  int len;
+  
+  argaddr(0, &addr);
+  argint(1, &len);
+  
+  return mprotect(addr, len);
+}
+
+uint64
+sys_munprotect(void)
+{
+  uint64 addr;
+  int len;
+  
+  argaddr(0, &addr);
+  argint(1, &len);
+  
+  return munprotect(addr, len);
+}
