@@ -104,7 +104,6 @@ int             wait(uint64);
 void            wakeup(void*);
 int             settickets(int);
 int             getpinfo(uint64);
-uint            get_min_pass_value(void);
 void            normalize_pass_values(void);
 void            update_pass(struct proc*);
 struct proc*    get_min_pass_proc(void);

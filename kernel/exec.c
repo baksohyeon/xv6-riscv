@@ -33,7 +33,7 @@ exec(char *path, char **argv)
   uint min_pass; // for stride scheduling
 
   // Get minimum pass value early to avoid potential deadlock
-  min_pass = get_min_pass_value();
+  min_pass = p->pass_value;
 
   begin_op(); // start a file operation
 
@@ -78,6 +78,8 @@ exec(char *path, char **argv)
 
   p = myproc();
   uint64 oldsz = p->sz;
+
+  p->pass_value = min_pass;
 
   // Allocate some pages at the next page boundary.
   // Make the first inaccessible as a stack guard.
@@ -127,7 +129,7 @@ exec(char *path, char **argv)
   // Reset stride scheduling parameters for new program
   p->tickets = DEFAULT_TICKETS;
   // Set pass_value to current minimum to prevent starvation of existing processes
-  p->pass_value = min_pass; 
+  p->pass_value = p->pass_value;
 
   // Commit to the user image.
   oldpagetable = p->pagetable;

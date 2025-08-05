@@ -308,7 +308,7 @@ settickets(int number)
   // For new processes or when tickets is being set for the first time
   if(p->pass_value == 0) {
     // Set to current minimum to prevent starvation
-    uint min_pass = get_min_pass_value();
+    uint min_pass = get_min_pass_proc()->pass_value;
     p->pass_value = min_pass;
   }
   
@@ -565,41 +565,6 @@ normalize_pass_values(void)
   }
 }
 
-// Get the current minimum pass value from all processes (not just RUNNABLE)
-// This prevents starvation when exec() resets pass_value
-// Returns 0 if called from exec context to avoid deadlock
-uint
-get_min_pass_value(void)
-{
-  struct proc *p;
-  struct proc *current = myproc();
-  uint min_pass = 0;
-  int found_any = 0;
-  
-  // If called from exec context (process already holds its own lock), 
-  // use a safer approach to avoid deadlock
-  if(current && holding(&current->lock)) {
-    // Return current process's pass_value as a reasonable approximation
-    return current->pass_value;
-  }
-  
-  for(p = proc; p < &proc[NPROC]; p++) {
-    // Skip current process if we're in process context to avoid deadlock
-    if(p == current) continue;
-    
-    acquire(&p->lock);
-    if(p->state != UNUSED && p->state != ZOMBIE) {
-      if(!found_any || p->pass_value < min_pass) {
-        min_pass = p->pass_value;
-        found_any = 1;
-      }
-    }
-    release(&p->lock);
-  }
-  
-  return min_pass;
-}
-
 
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -694,7 +659,7 @@ update_pass(struct proc *p)
     // Prevent individual process pass_value from getting too large
     // This helps with overflow prevention at the process level
     if(p->pass_value > 1000000) {  // 1 million threshold
-      uint global_min = get_min_pass_value();
+      uint global_min = get_min_pass_proc()->pass_value;
       if(global_min > 0 && p->pass_value > global_min + 100000) {
         p->pass_value = global_min + stride;
       }
